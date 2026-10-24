@@ -37,7 +37,7 @@ The details window lists every target with its own **Report** and **Reset** butt
 /addscore user:@yourdiscordname points:2372 comment:[PJGT]PANDA BEAR (B6W-34K)
 ```
 
-`comment:` is the target as shown in the list: the carrier name with its callsign, or the construction site being built. The Discord handle is configurable in the plugin preferences; the default is the placeholder `@yourdiscordname`, so no real user is credited by accident. The configured handle is stored in EDMC's configuration and persists across restarts.
+`comment:` is the target as shown in the list: the carrier name with its callsign, or the construction site being built. The Discord handle is configurable in the plugin preferences; the default is the placeholder `@yourdiscordname`, so no real user is credited by accident. The configured handle is stored in EDMC's configuration and persists across restarts. While the placeholder is still in use, the report window shows a reminder to change it in the plugin preferences.
 
 Deletes always move the entry to the history instead of discarding it, so an accidental reset can be undone. The history keeps the last 200 entries.
 

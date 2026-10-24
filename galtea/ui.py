@@ -404,7 +404,8 @@ class PluginUI:
 
     def _show_report(self, target: Target) -> None:
         """Show the Discord/Sicord macro for one target in a copyable field."""
-        command = target.report_command(self.discord_user())
+        user = self.discord_user()
+        command = target.report_command(user)
         parent = self.details if self.details is not None else self.panel
         self._close_report()
 
@@ -428,6 +429,18 @@ class PluginUI:
         entry.insert(0, command)
         entry.configure(state="readonly")
         entry.pack(fill="x", pady=(2, 10))
+
+        if user == DEFAULT_DISCORD_USER:
+            tk.Label(
+                frame,
+                text=(
+                    f"Note: {DEFAULT_DISCORD_USER} is only a placeholder. "
+                    "Change the Discord user in EDMC's settings "
+                    "(Galtea Haul Tracker) before using this command."
+                ),
+                justify="left",
+                wraplength=440,
+            ).pack(anchor="w", pady=(0, 10))
 
         buttons = tk.Frame(frame)
         buttons.pack(fill="x")

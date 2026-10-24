@@ -7,6 +7,11 @@ Versions match `VERSION` in `load.py`.
 
 ## [0.2.1] - 2026-10-24
 
+### Added
+
+- The report window shows a reminder to set your own Discord handle while the
+  placeholder `@yourdiscordname` is still in use.
+
 ### Changed
 
 - The default Discord handle used by the **Report** command is now the
