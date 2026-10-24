@@ -17,7 +17,7 @@ python3 -m unittest discover -s tests -v
 python3 -m compileall -q load.py galtea tests
 ```
 
-There is no linter or CI configuration; do not invent one without asking.
+There is no linter or CI configuration; do not invent one without asking. The only workflow is `.github/workflows/release.yml`: pushing a `v*` tag publishes a GitHub release whose notes are the matching `CHANGELOG.md` section.
 
 ## Working here
 
