@@ -1,12 +1,18 @@
-"""Tk user interface: main-window panel, details window and preferences."""
+"""Tk user interface: main-window panel, details window and preferences.
+
+Widgets use classic ``tk`` (not ``ttk``) so EDMC's theme module can colour
+them: in dark mode EDMC recolours registered ``tk`` widgets, while ``ttk``
+styling is not applied to plugin widgets.
+"""
 
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox
 from typing import Any, Dict, List, Optional
 
 import myNotebook as nb
+from theme import theme
 
 from .model import Target, format_number, format_timestamp, now_iso
 from .store import HaulStore
@@ -19,21 +25,47 @@ def _short(text: str, limit: int = 34) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "\u2026"
 
 
-def _scroll_area(parent: tk.Misc, height: int) -> tuple[tk.Frame, ttk.Frame, Any]:
+def _apply_theme(widget: tk.Misc) -> None:
+    """Register a widget tree with EDMC's theme and apply current colours.
+
+    ``theme.update`` registers the widget (and, for frames, its children) and
+    colours the widget plus its direct children.  Walking the tree ourselves
+    also covers nested rows and history entries created after startup.
+    """
+    try:
+        theme.update(widget)
+    except Exception:  # noqa: BLE001 - theming must never break the plugin
+        pass
+    for child in widget.winfo_children():
+        _apply_theme(child)
+
+
+def _scroll_area(parent: tk.Misc, height: int) -> tuple[tk.Frame, tk.Frame, Any]:
     """A vertically scrollable container.
 
     Returns (container, inner frame, wheel callback).
     """
-    container = ttk.Frame(parent)
-    canvas = tk.Canvas(container, height=height, highlightthickness=0, bd=0)
-    scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
-    inner = ttk.Frame(canvas)
+    container = tk.Frame(parent)
+    # Keep the canvas background at the frame default: EDMC treats an
+    # explicitly coloured canvas as intentional and would not re-theme it.
+    canvas = tk.Canvas(
+        container,
+        height=height,
+        highlightthickness=0,
+        bd=0,
+        background=container["background"],
+    )
+    scrollbar = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
+    # theme.py recolours the slider but not the trough; match the current
+    # background so the scrollbar does not stand out in the dark theme.
+    try:
+        if theme.current:
+            scrollbar.configure(troughcolor=theme.current["background"])
+    except Exception:  # noqa: BLE001 - cosmetic only
+        pass
+    inner = tk.Frame(canvas)
     window = canvas.create_window((0, 0), window=inner, anchor="nw")
     canvas.configure(yscrollcommand=scrollbar.set)
-
-    background = ttk.Style().lookup("TFrame", "background")
-    if background:
-        canvas.configure(background=background)
 
     inner.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
     canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window, width=event.width))
@@ -61,6 +93,8 @@ def _bind_wheel(widget: tk.Misc, wheel: Any) -> None:
         widget.bind(sequence, wheel)
     for child in widget.winfo_children():
         _bind_wheel(child, wheel)
+
+
 def _clear(frame: tk.Misc) -> None:
     for child in frame.winfo_children():
         child.destroy()
@@ -74,17 +108,18 @@ class PluginUI:
         self.tracker = tracker
         self.store = store
 
-        self.panel: Optional[ttk.Frame] = None
-        self.panel_rows: Optional[ttk.Frame] = None
-        self.panel_more: Optional[ttk.Label] = None
-        self.panel_total: Optional[ttk.Label] = None
+        self.panel: Optional[tk.Frame] = None
+        self.panel_rows: Optional[tk.Frame] = None
+        self.panel_more: Optional[tk.Label] = None
+        self.panel_total: Optional[tk.Label] = None
 
         self.details: Optional[tk.Toplevel] = None
-        self.details_total: Optional[ttk.Label] = None
-        self.target_rows: Optional[ttk.Frame] = None
-        self.history_rows: Optional[ttk.Frame] = None
+        self.details_total: Optional[tk.Label] = None
+        self.target_rows: Optional[tk.Frame] = None
+        self.history_rows: Optional[tk.Frame] = None
         self.target_wheel: Any = None
         self.history_wheel: Any = None
+        self._history_sig: Optional[tuple] = None
 
     # -- helpers ---------------------------------------------------------
 
@@ -104,28 +139,29 @@ class PluginUI:
 
     # -- main window panel ----------------------------------------------
 
-    def build_panel(self, parent: tk.Misc) -> ttk.Frame:
+    def build_panel(self, parent: tk.Misc) -> tk.Frame:
         self.parent = parent
-        frame = ttk.Frame(parent)
+        frame = tk.Frame(parent)
         frame.columnconfigure(0, weight=1)
 
-        ttk.Label(frame, text="Galtea Haul Tracker").grid(row=0, column=0, sticky="w")
+        tk.Label(frame, text="Galtea Haul Tracker").grid(row=0, column=0, sticky="w")
 
-        self.panel_rows = ttk.Frame(frame)
+        self.panel_rows = tk.Frame(frame)
         self.panel_rows.grid(row=1, column=0, sticky="ew", pady=(2, 0))
 
-        self.panel_more = ttk.Label(frame, text="")
+        self.panel_more = tk.Label(frame, text="")
         self.panel_more.grid(row=2, column=0, sticky="w")
 
-        self.panel_total = ttk.Label(frame, text="Total: 0 t")
+        self.panel_total = tk.Label(frame, text="Total: 0 t")
         self.panel_total.grid(row=3, column=0, sticky="w", pady=(4, 0))
 
-        ttk.Button(frame, text="Details", command=self.open_details).grid(
+        tk.Button(frame, text="Details", command=self.open_details).grid(
             row=4, column=0, sticky="ew", pady=(4, 0)
         )
 
         self.panel = frame
         self.refresh()
+        _apply_theme(frame)
         return frame
 
     def refresh(self) -> None:
@@ -139,24 +175,26 @@ class PluginUI:
         _clear(self.panel_rows)
         targets = self._targets()
         if not targets:
-            ttk.Label(self.panel_rows, text="No deliveries yet").pack(anchor="w")
+            tk.Label(self.panel_rows, text="No deliveries yet").pack(anchor="w")
             self.panel_more.configure(text="")
             self.panel_total.configure(text="Total: 0 t")
+            _apply_theme(self.panel_rows)
             return
 
         for target in targets[:PANEL_ROWS]:
-            row = ttk.Frame(self.panel_rows)
+            row = tk.Frame(self.panel_rows)
             row.pack(fill="x")
-            ttk.Label(row, text=_short(target.label, 20), anchor="w").pack(
+            tk.Label(row, text=_short(target.label, 20), anchor="w").pack(
                 side="left", fill="x", expand=True
             )
-            ttk.Label(row, text=f"{format_number(target.tons)} t", anchor="e").pack(side="right")
+            tk.Label(row, text=f"{format_number(target.tons)} t", anchor="e").pack(side="right")
 
         hidden = len(targets) - PANEL_ROWS
         self.panel_more.configure(text=f"+{hidden} more" if hidden > 0 else "")
         self.panel_total.configure(
             text=f"Total: {format_number(sum(target.tons for target in targets))} t"
         )
+        _apply_theme(self.panel_rows)
 
     # -- details window --------------------------------------------------
 
@@ -173,27 +211,29 @@ class PluginUI:
         window.protocol("WM_DELETE_WINDOW", self.close_details)
         self.details = window
 
-        outer = ttk.Frame(window, padding=12)
+        outer = tk.Frame(window, padx=12, pady=12)
         outer.pack(fill="both", expand=True)
         outer.columnconfigure(0, weight=1)
         outer.rowconfigure(2, weight=1)
         outer.rowconfigure(5, weight=1)
 
-        header = ttk.Frame(outer)
+        header = tk.Frame(outer)
         header.grid(row=0, column=0, sticky="ew")
         header.columnconfigure(0, weight=1)
-        self.details_total = ttk.Label(header, text="Total: 0 t", font="TkHeadingFont")
+        self.details_total = tk.Label(header, text="Total: 0 t", font="TkHeadingFont")
         self.details_total.grid(row=0, column=0, sticky="w")
-        ttk.Button(header, text="Reset all", command=self._reset_all).grid(row=0, column=1, sticky="e")
+        tk.Button(header, text="Reset all", command=self._reset_all).grid(
+            row=0, column=1, sticky="e"
+        )
 
-        ttk.Label(outer, text="Targets").grid(row=1, column=0, sticky="w", pady=(12, 2))
+        tk.Label(outer, text="Targets").grid(row=1, column=0, sticky="w", pady=(12, 2))
         targets_box, self.target_rows, self.target_wheel = _scroll_area(outer, 220)
         targets_box.grid(row=2, column=0, sticky="nsew")
 
-        ttk.Label(outer, text="History (deleted entries)").grid(
+        tk.Label(outer, text="History (deleted entries)").grid(
             row=3, column=0, sticky="w", pady=(14, 2)
         )
-        ttk.Label(
+        tk.Label(
             outer,
             text="Deleted entries stay here so an accidental reset can be undone.",
         ).grid(row=4, column=0, sticky="w")
@@ -201,6 +241,7 @@ class PluginUI:
         history_box.grid(row=5, column=0, sticky="nsew")
 
         self._refresh_details()
+        _apply_theme(window)
 
     def close_details(self) -> None:
         if self.details is not None:
@@ -209,6 +250,7 @@ class PluginUI:
             except tk.TclError:
                 pass
         self.details = None
+        self._history_sig = None
 
     def _refresh_details(self) -> None:
         if self.details is None or not self.details.winfo_exists():
@@ -226,27 +268,26 @@ class PluginUI:
             text=f"Total: {format_number(sum(target.tons for target in targets))} t"
         )
         if not targets:
-            ttk.Label(self.target_rows, text="No deliveries tracked yet.").pack(
-                anchor="w", pady=6
-            )
+            tk.Label(self.target_rows, text="No deliveries tracked yet.").pack(anchor="w", pady=6)
             _bind_wheel(self.target_rows, self.target_wheel)
+            _apply_theme(self.target_rows)
             return
 
         for target in targets:
-            row = ttk.Frame(self.target_rows)
+            row = tk.Frame(self.target_rows)
             row.pack(fill="x", pady=1)
             row.columnconfigure(0, weight=1)
 
-            ttk.Label(row, text=_short(target.label, 32), anchor="w").grid(
+            tk.Label(row, text=_short(target.label, 32), anchor="w").grid(
                 row=0, column=0, sticky="ew"
             )
-            ttk.Label(row, text=target.kind_label, width=15, anchor="w").grid(
+            tk.Label(row, text=target.kind_label, width=15, anchor="w").grid(
                 row=0, column=1, sticky="w", padx=(8, 0)
             )
-            ttk.Label(row, text=f"{format_number(target.tons)} t", width=10, anchor="e").grid(
+            tk.Label(row, text=f"{format_number(target.tons)} t", width=10, anchor="e").grid(
                 row=0, column=2, sticky="e", padx=(8, 8)
             )
-            ttk.Button(
+            tk.Button(
                 row,
                 text="Reset",
                 width=6,
@@ -254,38 +295,45 @@ class PluginUI:
             ).grid(row=0, column=3, sticky="e")
 
         _bind_wheel(self.target_rows, self.target_wheel)
+        _apply_theme(self.target_rows)
 
     def _refresh_history_rows(self) -> None:
         if self.history_rows is None:
             return
 
-        _clear(self.history_rows)
         history = self._history()
+        signature = tuple(str(entry.get("id", "")) for entry in history)
+        if signature == self._history_sig:
+            return
+        self._history_sig = signature
+
+        _clear(self.history_rows)
         if not history:
-            ttk.Label(self.history_rows, text="Nothing deleted yet.").pack(anchor="w", pady=6)
+            tk.Label(self.history_rows, text="Nothing deleted yet.").pack(anchor="w", pady=6)
             _bind_wheel(self.history_rows, self.history_wheel)
+            _apply_theme(self.history_rows)
             return
 
         for entry in history:
             snapshot = entry.get("target") or {}
             target = Target.from_dict(snapshot)
-            row = ttk.Frame(self.history_rows)
+            row = tk.Frame(self.history_rows)
             row.pack(fill="x", pady=1)
             row.columnconfigure(0, weight=1)
 
-            ttk.Label(row, text=_short(target.label, 26), anchor="w").grid(
+            tk.Label(row, text=_short(target.label, 26), anchor="w").grid(
                 row=0, column=0, sticky="ew"
             )
-            ttk.Label(row, text=target.kind_label, width=15, anchor="w").grid(
+            tk.Label(row, text=target.kind_label, width=15, anchor="w").grid(
                 row=0, column=1, sticky="w", padx=(8, 0)
             )
-            ttk.Label(row, text=f"{format_number(target.tons)} t", width=10, anchor="e").grid(
+            tk.Label(row, text=f"{format_number(target.tons)} t", width=10, anchor="e").grid(
                 row=0, column=2, sticky="e", padx=(8, 8)
             )
-            ttk.Label(row, text=format_timestamp(entry.get("deleted_at", "")), width=16, anchor="w").grid(
+            tk.Label(row, text=format_timestamp(entry.get("deleted_at", "")), width=16, anchor="w").grid(
                 row=0, column=3, sticky="w"
             )
-            ttk.Button(
+            tk.Button(
                 row,
                 text="Restore",
                 width=8,
@@ -293,6 +341,7 @@ class PluginUI:
             ).grid(row=0, column=4, sticky="e")
 
         _bind_wheel(self.history_rows, self.history_wheel)
+        _apply_theme(self.history_rows)
 
     # -- actions ---------------------------------------------------------
 
