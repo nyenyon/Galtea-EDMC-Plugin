@@ -2,11 +2,26 @@
 
 ## Repository state
 
-- As of 2026-10-24 this repo contains only `README.md`, `LICENSE` (GPL-3.0), `.gitignore`, and this file. There is still no source, manifest, dependency file, or CI config.
-- Do not assume a language, framework, test runner, or EDMC API version. There is nothing to build, lint, or test yet.
+- EDMC plugin written in Python 3 (standard library only, no third-party packages).
+- Entry point `load.py`; implementation in the `galtea` package; tests in `tests/`.
+- The plugin tracks tonnage sold to fleet/squadron carriers (`MarketSell`) and commodities delivered to construction sites (`ColonisationContribution`). Totals persist in `data/haul_tracker.json` (git-ignored).
+- `README.md` documents behaviour, install steps and the data file.
+
+## Commands
+
+```sh
+# Run the test suite (stdlib unittest, no install step needed)
+python3 -m unittest discover -s tests -v
+
+# Compile check
+python3 -m compileall -q load.py galtea tests
+```
+
+There is no linter or CI configuration; do not invent one without asking.
 
 ## Working here
 
-- Re-check the tree before starting work. If source has landed, replace this file with commands verified from manifests/CI instead of guessing.
-- The directory name suggests an Elite Dangerous Market Connector plugin, but no code confirms it. Confirm scope with the user before scaffolding a structure or installing dependencies.
+- `galtea/` must stay importable without EDMC: only `load.py` and `galtea/ui.py` may import EDMC modules (`myNotebook`, later `config`, `theme`) or tkinter.
+- `journal_entry` runs on EDMC's Tk main thread, so UI updates are safe there; keep journal handling non-blocking and wrap it in `try/except`.
+- Journal field names are verified against real journal samples; check EDDI/EDDiscovery before adding new events.
 - Remote is `git@github.com:nyenyon/Galtea-EDMC-Plugin.git`; the default branch is `main`.

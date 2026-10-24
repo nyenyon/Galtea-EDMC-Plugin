@@ -1,0 +1,154 @@
+"""Persistence, per-target reset and the deleted-entry history."""
+
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+from galtea.model import KIND_CARRIER, KIND_FLEET
+from galtea.store import HISTORY_LIMIT, HaulStore
+
+CARRIER = dict(
+    market_id=3709409280,
+    name="T3S-TIE",
+    kind=KIND_FLEET,
+    station_type="FleetCarrier",
+    system="Bleae Thua ED-D c12-5",
+)
+DEPOT = dict(
+    market_id=3963439106,
+    name="Shakespeare Point",
+    kind="construction",
+    station_type="SpaceConstructionDepot",
+    system="Bleae Thua ED-D c12-5",
+)
+
+
+class StoreTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.path = Path(self.tempdir.name) / "haul.json"
+        self.store = HaulStore(self.path)
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def add_carrier(self, tons: int = 1320, when: str = "2026-01-01T10:00:00Z") -> None:
+        self.store.add("F123", "Test", tons=tons, timestamp=when, **CARRIER)
+
+    def add_depot(self, tons: int = 700) -> None:
+        self.store.add("F123", "Test", tons=tons, timestamp="2026-01-01T10:05:00Z", **DEPOT)
+
+    def test_delete_single_target_keeps_it_in_history(self) -> None:
+        self.add_carrier(1320)
+        self.add_depot(700)
+
+        self.assertTrue(self.store.reset_target("F123", CARRIER["market_id"], "2026-01-02T08:00:00Z"))
+        self.assertEqual([t.name for t in self.store.targets("F123")], ["Shakespeare Point"])
+        self.assertEqual(self.store.total("F123"), 700)
+
+        history = self.store.history("F123")
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["target"]["name"], "T3S-TIE")
+        self.assertEqual(history[0]["target"]["tons"], 1320)
+        self.assertEqual(history[0]["deleted_at"], "2026-01-02T08:00:00Z")
+        self.assertEqual(history[0]["reason"], "deleted")
+
+    def test_history_survives_restart(self) -> None:
+        self.add_carrier(1320)
+        self.store.reset_target("F123", CARRIER["market_id"])
+
+        reloaded = HaulStore(self.path)
+        self.assertEqual(len(reloaded.history("F123")), 1)
+        self.assertEqual(reloaded.total("F123"), 0)
+
+    def test_restore_returns_entry_and_clears_history(self) -> None:
+        self.add_carrier(1320)
+        self.store.reset_target("F123", CARRIER["market_id"])
+        history_id = self.store.history("F123")[0]["id"]
+
+        self.assertTrue(self.store.restore("F123", history_id))
+        self.assertEqual(self.store.total("F123"), 1320)
+        self.assertEqual(self.store.history("F123"), [])
+
+    def test_restore_merges_with_existing_entry(self) -> None:
+        self.add_carrier(1320)
+        self.store.reset_target("F123", CARRIER["market_id"])
+        history_id = self.store.history("F123")[0]["id"]
+        self.add_carrier(500, when="2026-01-03T09:00:00Z")
+
+        self.assertTrue(self.store.restore("F123", history_id))
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.tons, 1820)
+
+    def test_reset_all_archives_everything(self) -> None:
+        self.add_carrier()
+        self.add_depot()
+
+        removed = self.store.reset_all("F123", "2026-01-02T09:00:00Z")
+        self.assertEqual(removed, 2)
+        self.assertEqual(self.store.targets("F123"), [])
+        history = self.store.history("F123")
+        self.assertEqual(len(history), 2)
+        self.assertTrue(all(entry["reason"] == "reset_all" for entry in history))
+
+    def test_reset_all_is_reversible(self) -> None:
+        self.add_carrier()
+        self.add_depot()
+        self.store.reset_all("F123")
+
+        for entry in self.store.history("F123"):
+            self.assertTrue(self.store.restore("F123", entry["id"]))
+        self.assertEqual(self.store.total("F123"), 2020)
+
+    def test_history_is_capped(self) -> None:
+        for index in range(HISTORY_LIMIT + 5):
+            market_id = 1000 + index
+            self.store.add(
+                "F123",
+                "Test",
+                market_id=market_id,
+                name=f"Site {index}",
+                kind=KIND_FLEET,
+                tons=10,
+            )
+            self.store.reset_target("F123", market_id)
+
+        self.assertEqual(len(self.store.history("F123")), HISTORY_LIMIT)
+
+    def test_commanders_do_not_share_totals(self) -> None:
+        self.add_carrier()
+        self.store.add("F999", "Other", tons=10, **DEPOT)
+
+        self.assertEqual(self.store.total("F123"), 1320)
+        self.assertEqual(self.store.total("F999"), 10)
+
+    def test_update_target_upgrades_unknown_carrier(self) -> None:
+        self.store.add(
+            "F123",
+            "Test",
+            market_id=CARRIER["market_id"],
+            name="T3S-TIE",
+            kind=KIND_CARRIER,
+            tons=100,
+        )
+        self.assertTrue(self.store.update_target("F123", CARRIER["market_id"], kind=KIND_FLEET))
+        self.assertEqual(self.store.targets("F123")[0].kind, KIND_FLEET)
+
+    def test_update_target_never_downgrades(self) -> None:
+        self.add_carrier()
+        self.assertFalse(self.store.update_target("F123", CARRIER["market_id"], kind=KIND_CARRIER))
+        self.assertEqual(self.store.targets("F123")[0].kind, KIND_FLEET)
+
+    def test_corrupt_file_is_moved_aside(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text("{not json", encoding="utf-8")
+
+        store = HaulStore(self.path)
+        self.assertEqual(store.targets("F123"), [])
+        self.assertTrue(self.path.with_suffix(".corrupt").exists())
+
+
+if __name__ == "__main__":
+    unittest.main()
