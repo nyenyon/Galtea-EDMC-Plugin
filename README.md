@@ -67,6 +67,10 @@ python3 -m unittest discover -s tests -v
 
 No dependencies; the tests use the standard library only.
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
+
 ## Licence
 
 GPL-3.0 — see [LICENSE](LICENSE).
