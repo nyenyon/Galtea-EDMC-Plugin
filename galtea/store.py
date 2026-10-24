@@ -79,7 +79,51 @@ class HaulStore:
         return record
 
     def cmdr_name(self, cmdr_key: str) -> str:
-        return str(self._cmdr(cmdr_key).get("name") or "")
+        record = (self.data.get("cmdrs") or {}).get(str(cmdr_key)) or {}
+        return str(record.get("name") or "")
+
+    def last_commander(self) -> str:
+        """Commander to display before the journal tells us who is playing.
+
+        EDMC only notifies plugins at startup when the game is running, so the
+        plugin has to remember the last commander itself.  Files written before
+        that key existed fall back to the most recently active commander.
+        """
+        remembered = str(self.data.get("last_commander") or "")
+        if remembered:
+            return remembered
+
+        latest_key = ""
+        latest_moment = ""
+        for cmdr_key, record in (self.data.get("cmdrs") or {}).items():
+            record = record or {}
+            moments = [
+                str((target or {}).get("last_delivery") or "")
+                for target in (record.get("targets") or {}).values()
+            ]
+            moments += [
+                str((entry or {}).get("deleted_at") or "")
+                for entry in record.get("history") or []
+            ]
+            moment = max(moments, default="")
+            if moment > latest_moment:
+                latest_key = str(cmdr_key)
+                latest_moment = moment
+        return latest_key
+
+    def remember_commander(self, cmdr_key: str, cmdr_name: str = "") -> None:
+        """Persist the active commander for the next start."""
+        key = str(cmdr_key or "")
+        if not key:
+            return
+        changed = self.data.get("last_commander") != key
+        self.data["last_commander"] = key
+        record = (self.data.get("cmdrs") or {}).get(key)
+        if record is not None and cmdr_name and record.get("name") != cmdr_name:
+            changed = True
+        self._cmdr(key, cmdr_name)
+        if changed:
+            self.save()
 
     # -- mutations -------------------------------------------------------
 

@@ -124,6 +124,24 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(self.store.total("F123"), 1320)
         self.assertEqual(self.store.total("F999"), 10)
 
+    def test_last_commander_is_remembered(self) -> None:
+        self.add_carrier()
+        self.store.remember_commander("F123", "Test")
+
+        reloaded = HaulStore(self.path)
+        self.assertEqual(reloaded.last_commander(), "F123")
+        self.assertEqual(reloaded.cmdr_name("F123"), "Test")
+
+    def test_last_commander_falls_back_to_most_recent_data(self) -> None:
+        self.add_carrier(tons=10, when="2026-01-01T10:00:00Z")
+        self.store.add("F999", "Other", tons=10, timestamp="2026-01-02T10:00:00Z", **DEPOT)
+
+        # Data files written before the key existed still show something.
+        self.assertEqual(self.store.last_commander(), "F999")
+
+    def test_last_commander_of_an_empty_store_is_unknown(self) -> None:
+        self.assertEqual(self.store.last_commander(), "")
+
     def test_update_target_upgrades_unknown_carrier(self) -> None:
         self.store.add(
             "F123",

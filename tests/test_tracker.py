@@ -381,6 +381,17 @@ class TrackerTest(unittest.TestCase):
         self.assertEqual(target.kind, KIND_FLEET)
         self.assertEqual(target.tons, 300)
 
+    def test_restart_shows_last_commander_before_any_event(self) -> None:
+        self.feed(FLEET_CARRIER)
+        self.feed(sale(1320))
+
+        # EDMC restarted while the game is not running: no StartUp event is
+        # sent, so the tracker has to know the last commander itself.
+        restarted = Tracker(HaulStore(Path(self.tempdir.name) / "haul.json"))
+        self.assertEqual(restarted.cmdr_key, "F123")
+        self.assertEqual(restarted.cmdr_name, "Test")
+        self.assertEqual(restarted.store.total(restarted.cmdr_key), 1320)
+
 
 if __name__ == "__main__":
     unittest.main()

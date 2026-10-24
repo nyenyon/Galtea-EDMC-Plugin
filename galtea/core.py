@@ -30,8 +30,10 @@ class Tracker:
         self.current: Optional[StationContext] = None
         self.stations: Dict[int, StationContext] = {}
         self.carrier_names: Dict[int, Dict[str, str]] = {}
-        self.cmdr_key: str = ""
-        self.cmdr_name: str = ""
+        # Show the last active commander right away: EDMC only sends a
+        # synthetic StartUp event when the game is already running.
+        self.cmdr_key: str = store.last_commander()
+        self.cmdr_name: str = store.cmdr_name(self.cmdr_key) if self.cmdr_key else ""
 
     # -- commander -------------------------------------------------------
 
@@ -40,9 +42,11 @@ class Tracker:
         if key == self.cmdr_key:
             if cmdr and cmdr != self.cmdr_name:
                 self.cmdr_name = str(cmdr)
+                self.store.remember_commander(key, self.cmdr_name)
             return False
         self.cmdr_key = key
         self.cmdr_name = str(cmdr or "")
+        self.store.remember_commander(key, self.cmdr_name)
         self.current = None
         self.stations.clear()
         return True

@@ -26,4 +26,5 @@ There is no linter or CI configuration; do not invent one without asking.
 - `journal_entry` runs on EDMC's Tk main thread, so UI updates are safe there; keep journal handling non-blocking and wrap it in `try/except`.
 - Journal field names are verified against real journal samples; check EDDI/EDDiscovery before adding new events.
 - Journals sometimes report squadron carriers as `StationType: "FleetCarrier"`; `squadronBank` in `StationServices` and four-character callsigns (e.g. `0822`) identify them. Squadron carrier names also end in such a callsign in `SupercruiseDestinationDrop`.
+- EDMC only sends journal events while the game is running (plus a synthetic `StartUp` event when it starts with the game already running). `Tracker` therefore preloads the last commander via `HaulStore.last_commander()`; keep `remember_commander()` in sync when commander handling changes.
 - Remote is `git@github.com:nyenyon/Galtea-EDMC-Plugin.git`; the default branch is `main`.
