@@ -27,7 +27,8 @@ KIND_LABELS = {
 }
 
 # Discord/Sicord handle used in the report command when none is configured.
-DEFAULT_DISCORD_USER = "@nyenyon"
+# A placeholder, so reports are never accidentally credited to a real user.
+DEFAULT_DISCORD_USER = "@yourdiscordname"
 
 
 def normalize_discord_user(value: Any) -> str:

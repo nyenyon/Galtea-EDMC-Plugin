@@ -51,6 +51,11 @@ def _set_setting(key: str, value: str) -> None:
         return
     try:
         _edmc_config.set(key, value)
+        # Newer EDMC versions save on ``set`` already; older ones only write on
+        # shutdown.  Saving here keeps the Discord handle across crashes too.
+        save = getattr(_edmc_config, "save", None)
+        if callable(save):
+            save()
     except Exception:  # noqa: BLE001 - saving prefs must never fail loudly
         pass
 

@@ -5,6 +5,15 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
+## [0.2.1] - 2026-10-24
+
+### Changed
+
+- The default Discord handle used by the **Report** command is now the
+  placeholder `@yourdiscordname` instead of `@nyenyon`, so tonnage is not
+  accidentally credited to the wrong user. A handle entered in the plugin
+  preferences is stored in EDMC's configuration and persists across restarts.
+
 ## [0.2.0] - 2026-10-24
 
 ### Added

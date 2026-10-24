@@ -26,7 +26,7 @@ class ReportCommandTest(unittest.TestCase):
 
         self.assertEqual(
             target.report_command(),
-            "/addscore user:@nyenyon points:2372 "
+            f"/addscore user:{DEFAULT_DISCORD_USER} points:2372 "
             "comment:[PJGT]PANDA BEAR (B6W-34K)",
         )
 
@@ -41,7 +41,7 @@ class ReportCommandTest(unittest.TestCase):
 
         self.assertEqual(
             target.report_command(),
-            "/addscore user:@nyenyon points:105 "
+            f"/addscore user:{DEFAULT_DISCORD_USER} points:105 "
             "comment:[SCC] The Knave (0822)",
         )
 
@@ -55,7 +55,7 @@ class ReportCommandTest(unittest.TestCase):
 
         self.assertEqual(
             target.report_command(),
-            "/addscore user:@nyenyon points:512 comment:Hoshino Enterprise",
+            f"/addscore user:{DEFAULT_DISCORD_USER} points:512 comment:Hoshino Enterprise",
         )
 
     def test_user_is_configurable_and_gets_an_at_sign(self) -> None:
@@ -76,9 +76,12 @@ class ReportCommandTest(unittest.TestCase):
 
         self.assertIn("points:12345", target.report_command())
 
+    def test_default_user_is_a_placeholder(self) -> None:
+        self.assertEqual(DEFAULT_DISCORD_USER, "@yourdiscordname")
+
     def test_normalize_discord_user(self) -> None:
-        self.assertEqual(normalize_discord_user("nyenyon"), "@nyenyon")
-        self.assertEqual(normalize_discord_user("@nyenyon"), "@nyenyon")
+        self.assertEqual(normalize_discord_user("exampleuser"), "@exampleuser")
+        self.assertEqual(normalize_discord_user("@exampleuser"), "@exampleuser")
         self.assertEqual(normalize_discord_user("   "), "")
 
 
