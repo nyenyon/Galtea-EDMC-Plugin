@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 # Delivery targets we care about.
 KIND_FLEET = "fleet_carrier"
@@ -25,6 +25,17 @@ KIND_LABELS = {
     KIND_CONSTRUCTION: "Construction site",
     KIND_CARRIER: "Carrier",
 }
+
+# Discord/Sicord handle used in the report command when none is configured.
+DEFAULT_DISCORD_USER = "@nyenyon"
+
+
+def normalize_discord_user(value: Any) -> str:
+    """Return a Discord handle with a leading ``@``; empty stays empty."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return text if text.startswith("@") else f"@{text}"
 
 
 def now_iso() -> str:
@@ -100,6 +111,11 @@ class Target:
     @property
     def kind_label(self) -> str:
         return KIND_LABELS.get(self.kind, "Unknown")
+
+    def report_command(self, user: Optional[str] = DEFAULT_DISCORD_USER) -> str:
+        """The Discord/Sicord macro that reports this target's tonnage."""
+        name = normalize_discord_user(user) or DEFAULT_DISCORD_USER
+        return f"/addscore user:{name} points:{int(self.tons)} comment:{self.label}"
 
     def to_dict(self) -> Dict[str, Any]:
         return {

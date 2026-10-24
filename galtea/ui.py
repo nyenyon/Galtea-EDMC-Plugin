@@ -8,16 +8,51 @@ styling is not applied to plugin widgets.
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 from typing import Any, Dict, List, Optional
 
 import myNotebook as nb
 from theme import theme
 
-from .model import Target, format_number, format_timestamp, now_iso
+from .model import (
+    DEFAULT_DISCORD_USER,
+    Target,
+    format_number,
+    format_timestamp,
+    normalize_discord_user,
+    now_iso,
+)
 from .store import HaulStore
 
 PANEL_ROWS = 3
+SETTING_DISCORD_USER = "galtea_discord_user"
+
+try:  # EDMC 6 exposes the config singleton from the config package
+    from config import config as _edmc_config
+except ImportError:  # older EDMC provides the getters on the module itself
+    try:
+        import config as _edmc_config
+    except ImportError:  # pragma: no cover - only happens outside EDMC
+        _edmc_config = None  # type: ignore[assignment]
+
+
+def _get_setting(key: str, default: str) -> str:
+    if _edmc_config is None:
+        return default
+    try:
+        value = _edmc_config.get_str(key, default)
+    except Exception:  # noqa: BLE001 - a broken config must not break the UI
+        return default
+    return str(value or default)
+
+
+def _set_setting(key: str, value: str) -> None:
+    if _edmc_config is None:
+        return
+    try:
+        _edmc_config.set(key, value)
+    except Exception:  # noqa: BLE001 - saving prefs must never fail loudly
+        pass
 
 
 def _short(text: str, limit: int = 34) -> str:
@@ -121,6 +156,9 @@ class PluginUI:
         self.history_wheel: Any = None
         self._history_sig: Optional[tuple] = None
 
+        self.report_window: Optional[tk.Toplevel] = None
+        self.discord_user_var: Optional[tk.StringVar] = None
+
     # -- helpers ---------------------------------------------------------
 
     @property
@@ -136,6 +174,13 @@ class PluginUI:
         if not self.cmdr_key:
             return []
         return self.store.history(self.cmdr_key)
+
+    def discord_user(self) -> str:
+        """Discord handle used in report commands (configurable in the prefs)."""
+        return (
+            normalize_discord_user(_get_setting(SETTING_DISCORD_USER, DEFAULT_DISCORD_USER))
+            or DEFAULT_DISCORD_USER
+        )
 
     # -- main window panel ----------------------------------------------
 
@@ -244,6 +289,7 @@ class PluginUI:
         _apply_theme(window)
 
     def close_details(self) -> None:
+        self._close_report()
         if self.details is not None:
             try:
                 self.details.destroy()
@@ -289,10 +335,16 @@ class PluginUI:
             )
             tk.Button(
                 row,
+                text="Report",
+                width=8,
+                command=lambda item=target: self._show_report(item),
+            ).grid(row=0, column=3, sticky="e", padx=(0, 4))
+            tk.Button(
+                row,
                 text="Reset",
                 width=6,
                 command=lambda mid=target.market_id: self._reset_target(mid),
-            ).grid(row=0, column=3, sticky="e")
+            ).grid(row=0, column=4, sticky="e")
 
         _bind_wheel(self.target_rows, self.target_wheel)
         _apply_theme(self.target_rows)
@@ -343,6 +395,85 @@ class PluginUI:
         _bind_wheel(self.history_rows, self.history_wheel)
         _apply_theme(self.history_rows)
 
+    # -- report ----------------------------------------------------------
+
+    def _show_report(self, target: Target) -> None:
+        """Show the Discord/Sicord macro for one target in a copyable field."""
+        command = target.report_command(self.discord_user())
+        parent = self.details if self.details is not None else self.panel
+        self._close_report()
+
+        window = tk.Toplevel(parent)
+        window.title("Report delivery")
+        window.transient(parent)
+        window.resizable(False, False)
+        window.protocol("WM_DELETE_WINDOW", self._close_report)
+        window.bind("<Escape>", lambda _event: self._close_report())
+        self.report_window = window
+
+        frame = tk.Frame(window, padx=12, pady=12)
+        frame.pack(fill="both", expand=True)
+        tk.Label(frame, text=f"Report {target.label}", font="TkHeadingFont").pack(anchor="w")
+        tk.Label(frame, text=f"{format_number(target.tons)} t delivered").pack(
+            anchor="w", pady=(2, 10)
+        )
+        tk.Label(frame, text="Paste this command into Discord or Sicord:").pack(anchor="w")
+
+        entry = tk.Entry(frame, width=64)
+        entry.insert(0, command)
+        entry.configure(state="readonly")
+        entry.pack(fill="x", pady=(2, 10))
+
+        buttons = tk.Frame(frame)
+        buttons.pack(fill="x")
+        copy_button = tk.Button(buttons, text="Copy", width=8)
+        copy_button.configure(command=lambda: self._copy_report(command, copy_button))
+        copy_button.pack(side="left")
+        tk.Button(buttons, text="Close", width=8, command=self._close_report).pack(side="right")
+
+        _apply_theme(window)
+        try:
+            # Read-only entries use their own background colour, which EDMC's
+            # theme does not update.
+            entry.configure(
+                readonlybackground=str(entry.cget("background")),
+                readonlyforeground=str(entry.cget("foreground")),
+            )
+        except tk.TclError:
+            pass
+
+        entry.focus_set()
+        entry.select_range(0, "end")
+
+    def _copy_report(self, command: str, button: tk.Button) -> None:
+        owner = self.details if self.details is not None else self.parent
+        try:
+            owner.clipboard_clear()
+            owner.clipboard_append(command)
+        except tk.TclError:
+            return
+        try:
+            button.configure(text="Copied")
+            button.after(1800, lambda: self._reset_copy_label(button))
+        except tk.TclError:
+            pass
+
+    @staticmethod
+    def _reset_copy_label(button: tk.Button) -> None:
+        try:
+            if button.winfo_exists():
+                button.configure(text="Copy")
+        except tk.TclError:
+            pass
+
+    def _close_report(self) -> None:
+        if self.report_window is not None:
+            try:
+                self.report_window.destroy()
+            except tk.TclError:
+                pass
+        self.report_window = None
+
     # -- actions ---------------------------------------------------------
 
     def _reset_target(self, market_id: int) -> None:
@@ -387,10 +518,35 @@ class PluginUI:
             ),
             justify="left",
         ).grid(row=1, column=0, sticky="w", pady=(4, 8))
-        nb.Button(frame, text="Reset all tracked entries\u2026", command=self._reset_all).grid(
+
+        nb.Label(frame, text="Discord user for the Report command").grid(
             row=2, column=0, sticky="w"
         )
+        self.discord_user_var = tk.StringVar(master=frame, value=self.discord_user())
+        ttk.Entry(frame, textvariable=self.discord_user_var, width=32).grid(
+            row=3, column=0, sticky="w", pady=(2, 2)
+        )
+        nb.Label(
+            frame,
+            text=(
+                f"Used as user:@name in the /addscore command "
+                f"(default: {DEFAULT_DISCORD_USER})."
+            ),
+            justify="left",
+        ).grid(row=4, column=0, sticky="w", pady=(0, 8))
+
+        nb.Button(frame, text="Reset all tracked entries\u2026", command=self._reset_all).grid(
+            row=5, column=0, sticky="w"
+        )
         return frame
+
+    def save_prefs(self) -> None:
+        """Persist the preferences page; called by EDMC after the dialog."""
+        if self.discord_user_var is None:
+            return
+        _set_setting(
+            SETTING_DISCORD_USER, normalize_discord_user(self.discord_user_var.get())
+        )
 
     # -- lifecycle -------------------------------------------------------
 

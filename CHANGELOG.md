@@ -5,6 +5,15 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
+## [0.2.0] - 2026-10-24
+
+### Added
+
+- **Report** button next to every target in the details window: it shows the
+  Discord/Sicord macro `/addscore user:@name points:<tons> comment:<target>`
+  in a copyable field. The Discord handle is configurable in the plugin
+  preferences (default `@nyenyon`).
+
 ## [0.1.0] - 2026-10-24
 
 ### Added

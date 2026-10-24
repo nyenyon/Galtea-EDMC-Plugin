@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 
 import tkinter as tk
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 from galtea.core import Tracker
 from galtea.store import HaulStore
@@ -97,6 +97,8 @@ def plugin_prefs(parent: tk.Misc, cmdr: str, is_beta: bool) -> tk.Widget:
 
 def prefs_changed(cmdr: str, is_beta: bool) -> None:
     _ensure().save()
+    if _ui is not None:
+        _ui.save_prefs()
 
 
 def plugin_stop() -> None:

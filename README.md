@@ -29,7 +29,15 @@ Total: 3,940 t
 [ Details ]
 ```
 
-The details window lists every target with its own **Reset** button, a **Reset all** button, and a **History** section containing every deleted entry (name, type, tonnage, deletion time) with a **Restore** button.
+The details window lists every target with its own **Report** and **Reset** buttons, a **Reset all** button, and a **History** section containing every deleted entry (name, type, tonnage, deletion time) with a **Restore** button.
+
+**Report** shows the Discord/Sicord macro for that target in a copyable field:
+
+```
+/addscore user:@nyenyon points:2372 comment:[PJGT]PANDA BEAR (B6W-34K)
+```
+
+`comment:` is the target as shown in the list: the carrier name with its callsign, or the construction site being built. The Discord handle is configurable in the plugin preferences (default `@nyenyon`).
 
 Deletes always move the entry to the history instead of discarding it, so an accidental reset can be undone. The history keeps the last 200 entries.
 
