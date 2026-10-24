@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from galtea.model import KIND_CARRIER, KIND_FLEET
+from galtea.model import KIND_CARRIER, KIND_FLEET, KIND_SQUADRON
 from galtea.store import HISTORY_LIMIT, HaulStore
 
 CARRIER = dict(
@@ -140,6 +140,11 @@ class StoreTest(unittest.TestCase):
         self.add_carrier()
         self.assertFalse(self.store.update_target("F123", CARRIER["market_id"], kind=KIND_CARRIER))
         self.assertEqual(self.store.targets("F123")[0].kind, KIND_FLEET)
+
+    def test_update_target_corrects_fleet_to_squadron(self) -> None:
+        self.add_carrier()
+        self.assertTrue(self.store.update_target("F123", CARRIER["market_id"], kind=KIND_SQUADRON))
+        self.assertEqual(self.store.targets("F123")[0].kind, KIND_SQUADRON)
 
     def test_corrupt_file_is_moved_aside(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

@@ -26,6 +26,17 @@ SQUADRON_CARRIER = {
     "StarSystem": "Bleae Thua ED-D c12-5",
     "timestamp": "2026-01-01T10:00:00Z",
 }
+# The game reports squadron carriers as FleetCarrier; the squadron bank
+# service and the four-character callsign identify them.
+SQUADRON_CARRIER_AS_FLEET = {
+    "event": "Docked",
+    "MarketID": 3709409998,
+    "StationName": "0822",
+    "StationType": "FleetCarrier",
+    "StationServices": ["dock", "commodities", "squadronBank"],
+    "StarSystem": "Bleae Thua ED-D c12-5",
+    "timestamp": "2026-01-01T10:00:00Z",
+}
 SPACE_DEPOT = {
     "event": "Docked",
     "MarketID": 3963439106,
@@ -141,6 +152,85 @@ class TrackerTest(unittest.TestCase):
         self.assertEqual(target.display_name, "Test Carrier")
         self.assertEqual(target.label, "Test Carrier (T3S-TIE)")
 
+    def test_squadron_carrier_is_recognised_despite_fleetcarrier_type(self) -> None:
+        self.feed(SQUADRON_CARRIER_AS_FLEET)
+        self.feed(sale(105, market_id=3709409998))
+
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.kind, KIND_SQUADRON)
+        self.assertEqual(target.name, "0822")
+
+    def test_squadron_carrier_is_recognised_by_callsign_shape(self) -> None:
+        entry = dict(SQUADRON_CARRIER_AS_FLEET, StationServices=[], MarketID=3709409997)
+        self.feed(entry)
+        self.feed(sale(50, market_id=3709409997))
+
+        self.assertEqual(self.store.targets("F123")[0].kind, KIND_SQUADRON)
+
+    def test_squadron_carrier_name_from_supercruise_drop(self) -> None:
+        self.feed(SQUADRON_CARRIER_AS_FLEET)
+        self.feed(sale(105, market_id=3709409998))
+        self.feed(
+            {
+                "event": "SupercruiseDestinationDrop",
+                "MarketID": 3709409998,
+                "Type": "[SCC] The Knave 0822",
+            }
+        )
+
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.display_name, "[SCC] The Knave")
+        self.assertEqual(target.label, "[SCC] The Knave (0822)")
+        self.assertEqual(target.kind, KIND_SQUADRON)
+
+    def test_squadron_carrier_drop_before_docking(self) -> None:
+        self.feed(
+            {
+                "event": "SupercruiseDestinationDrop",
+                "MarketID": 3709409998,
+                "Type": "[SCC] The Knave 0822",
+            }
+        )
+        self.feed(SQUADRON_CARRIER_AS_FLEET)
+        self.feed(sale(105, market_id=3709409998))
+
+        self.assertEqual(self.store.targets("F123")[0].label, "[SCC] The Knave (0822)")
+
+    def test_station_drop_does_not_rename_a_construction_site(self) -> None:
+        self.feed(SPACE_DEPOT)
+        self.feed(contribution({"steel": 700}))
+        # A station name that happens to end in four letters must not be
+        # mistaken for a squadron-carrier name.
+        self.feed(
+            {
+                "event": "SupercruiseDestinationDrop",
+                "MarketID": 3963439106,
+                "Type": "Fuji City",
+            }
+        )
+
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.display_name, "")
+        self.assertEqual(target.label, "Shakespeare Point")
+
+    def test_squadron_carrier_stats_set_name_and_kind(self) -> None:
+        self.feed(SQUADRON_CARRIER_AS_FLEET)
+        self.feed(sale(105, market_id=3709409998))
+        self.feed(
+            {
+                "event": "CarrierStats",
+                "CarrierID": 3709409998,
+                "CarrierType": "SquadronCarrier",
+                "Callsign": "0822",
+                "Name": "The Knave",
+            }
+        )
+
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.display_name, "The Knave")
+        self.assertEqual(target.kind, KIND_SQUADRON)
+        self.assertEqual(target.label, "The Knave (0822)")
+
     def test_carrier_name_from_carrier_stats(self) -> None:
         self.feed(FLEET_CARRIER)
         self.feed(sale(100))
@@ -215,6 +305,30 @@ class TrackerTest(unittest.TestCase):
         target = self.store.targets("F123")[0]
         self.assertEqual(target.kind, KIND_CONSTRUCTION)
         self.assertEqual(target.tons, 1000)
+
+    def test_construction_site_prefix_is_not_displayed(self) -> None:
+        self.feed(
+            dict(
+                SPACE_DEPOT,
+                StationName="Orbital Construction Site: Hoshino Enterprise",
+            )
+        )
+        self.feed(contribution({"steel": 700}))
+
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.name, "Orbital Construction Site: Hoshino Enterprise")
+        self.assertEqual(target.label, "Hoshino Enterprise")
+
+    def test_planetary_construction_site_prefix_is_not_displayed(self) -> None:
+        self.feed(
+            dict(
+                PLANETARY_DEPOT,
+                StationName="Planetary Construction Site: Kruger Depot",
+            )
+        )
+        self.feed(contribution({"steel": 700}, market_id=3963439107))
+
+        self.assertEqual(self.store.targets("F123")[0].label, "Kruger Depot")
 
     def test_contribution_without_docked_event_uses_station_name(self) -> None:
         self.assertTrue(self.feed(contribution({"steel": 900}), station="Shakespeare Point"))

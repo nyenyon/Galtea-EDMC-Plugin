@@ -51,9 +51,11 @@ Totals are stored in `data/haul_tracker.json` inside the plugin folder. A corrup
 
 ## Good to know
 
-- Carrier names: the journal only knows a carrier's **callsign** (e.g. `T3S-TIE`) when you dock. The pretty name appears when the journal reveals it (`SupercruiseDestinationDrop`, or `CarrierStats` for your own carrier); then the display becomes `Name (CALLSIGN)`. Until then the callsign is shown.
+- Carrier names: the journal only knows a carrier's **callsign** (e.g. `T3S-TIE` for fleet carriers, `0822` for squadron carriers) when you dock. The pretty name appears when the journal reveals it (`SupercruiseDestinationDrop`, or `CarrierStats`/`CarrierNameChanged` for your own carrier); then the display becomes `Name (CALLSIGN)`. Until then only the callsign is shown.
+- Squadron carriers are sometimes written as `StationType: "FleetCarrier"` in journals. The plugin recognises them by the `squadronBank` station service or by the four-character callsign, so they are labelled **Squadron carrier**.
+- Construction sites are named `Orbital Construction Site: <name>` / `Planetary Construction Site: <name>` in the journal; the display shows only `<name>`, the station that is being built.
 - Theme: the plugin uses classic Tk widgets and registers them with EDMC's `theme` module, so the **default** and **dark** themes (including theme changes while EDMC is running) are respected.
-- If EDMC is started while you are already docked, the docking event has already been consumed. A sale at a callsign-shaped station name is still recognised as a carrier (type shown as “Carrier” until a docking event refines it).
+- If EDMC is started while you are already docked, the docking event has already been consumed. A sale at a fleet-carrier callsign-shaped station name is still recognised as a carrier (type shown as “Carrier” until a docking event refines it).
 - CQC sessions are ignored.
 
 ## Development

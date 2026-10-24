@@ -30,10 +30,15 @@ STATION_KINDS = {
     "colonisationport": KIND_CONSTRUCTION,
 }
 
-# Carrier callsigns look like "T3S-TIE" / "X9K-WTW".
-CALLSIGN_RE = re.compile(r"^[A-Z0-9]{3}-[A-Z0-9]{3}$")
-# SupercruiseDestinationDrop for a carrier reads like "Test Carrier T3S-TIE".
-DROP_NAME_RE = re.compile(r"^(?P<name>.+?)\s+(?P<callsign>[A-Z0-9]{3}-[A-Z0-9]{3})$")
+# Fleet-carrier callsigns look like "T3S-TIE" / "X9K-WTW".  Squadron carriers
+# use a four-character identifier such as "0822" or "SCCX" instead.
+FLEET_CALLSIGN_RE = re.compile(r"^[A-Z0-9]{3}-[A-Z0-9]{3}$")
+SQUADRON_CALLSIGN_RE = re.compile(r"^[A-Z0-9]{4}$")
+# SupercruiseDestinationDrop for a carrier reads like "Test Carrier T3S-TIE"
+# or, for a squadron carrier, "[SCC] The Knave 0822".
+DROP_NAME_RE = re.compile(
+    r"^(?P<name>.+?)\s+(?P<callsign>(?:[A-Z0-9]{3}-[A-Z0-9]{3}|[A-Z0-9]{4}))$"
+)
 
 
 @dataclass
@@ -49,15 +54,45 @@ class StationContext:
 
 
 def is_callsign(value: Optional[str]) -> bool:
+    """True for a fleet-carrier callsign such as ``T3S-TIE``.
+
+    Four-character squadron identifiers are deliberately not accepted here:
+    this check recognises a carrier from the *station name* alone, and a
+    short station name could be a regular starport.
+    """
     if not value:
         return False
-    return bool(CALLSIGN_RE.match(str(value).strip().upper()))
+    return bool(FLEET_CALLSIGN_RE.match(str(value).strip().upper()))
+
+
+def is_squadron_callsign(value: Optional[str]) -> bool:
+    """True for a four-character squadron-carrier identifier (``0822``)."""
+    if not value:
+        return False
+    return bool(SQUADRON_CALLSIGN_RE.match(str(value).strip().upper()))
 
 
 def kind_for_station_type(station_type: Optional[str]) -> Optional[str]:
     if not station_type:
         return None
     return STATION_KINDS.get(str(station_type).strip().lower())
+
+
+def station_kind(
+    station_type: Optional[str], name: Optional[str] = "", services: Any = ()
+) -> Optional[str]:
+    """Classify a station, correcting the journal's carrier-type ambiguity.
+
+    The game writes ``StationType: "FleetCarrier"`` for squadron carriers as
+    well; the ``squadronBank`` service and the four-character callsign give
+    them away.
+    """
+    kind = kind_for_station_type(station_type)
+    if kind == KIND_FLEET:
+        known_services = {str(service).lower() for service in services or ()}
+        if "squadronbank" in known_services or is_squadron_callsign(name):
+            return KIND_SQUADRON
+    return kind
 
 
 def station_from_entry(entry: Dict[str, Any]) -> Optional[StationContext]:
@@ -75,7 +110,7 @@ def station_from_entry(entry: Dict[str, Any]) -> Optional[StationContext]:
         market_id=market_id,
         name=str(name),
         station_type=station_type,
-        kind=kind_for_station_type(station_type),
+        kind=station_kind(station_type, name, entry.get("StationServices")),
         system=str(entry.get("StarSystem") or ""),
     )
 
@@ -105,7 +140,8 @@ def carrier_name_from_drop(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """``SupercruiseDestinationDrop`` can reveal a carrier's display name.
 
     The journal writes the carrier's name followed by its callsign, e.g.
-    ``"Type": "Test Carrier T3S-TIE"``.
+    ``"Type": "Test Carrier T3S-TIE"`` or, for a squadron carrier,
+    ``"Type": "[SCC] The Knave 0822"``.
     """
     market_id = entry.get("MarketID")
     if market_id is None:
@@ -129,8 +165,12 @@ def carrier_name_from_stats(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     callsign = entry.get("Callsign")
     if market_id is None or not name:
         return None
+    kind = None
+    if str(entry.get("CarrierType") or "").strip().lower() == "squadroncarrier":
+        kind = KIND_SQUADRON
     return {
         "market_id": int(market_id),
         "name": str(name),
         "callsign": str(callsign or ""),
+        "kind": kind,
     }

@@ -25,4 +25,5 @@ There is no linter or CI configuration; do not invent one without asking.
 - UI uses classic `tk` widgets (not `ttk`) and registers every widget tree with EDMC's `theme.update()`; `ttk` widgets are not recoloured by EDMC in dark mode. New widgets must go through `_apply_theme()`.
 - `journal_entry` runs on EDMC's Tk main thread, so UI updates are safe there; keep journal handling non-blocking and wrap it in `try/except`.
 - Journal field names are verified against real journal samples; check EDDI/EDDiscovery before adding new events.
+- Journals sometimes report squadron carriers as `StationType: "FleetCarrier"`; `squadronBank` in `StationServices` and four-character callsigns (e.g. `0822`) identify them. Squadron carrier names also end in such a callsign in `SupercruiseDestinationDrop`.
 - Remote is `git@github.com:nyenyon/Galtea-EDMC-Plugin.git`; the default branch is `main`.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict
@@ -39,6 +40,23 @@ def format_number(value: int) -> str:
         return "0"
 
 
+# Construction sites are named "<kind> Construction Site: <future station>"
+# in the journal.  Only the future station name is interesting.
+_CONSTRUCTION_PREFIX = re.compile(
+    r"^\s*(?:(?:orbital|planetary|space|surface)\s+)?construction\s+(?:site|depot)\s*:\s*",
+    re.IGNORECASE,
+)
+
+
+def clean_construction_name(name: str) -> str:
+    """Strip the generic construction-site prefix from a station name."""
+    text = str(name or "").strip()
+    if not text:
+        return text
+    stripped = _CONSTRUCTION_PREFIX.sub("", text, count=1).strip()
+    return stripped or text
+
+
 def format_timestamp(value: str) -> str:
     """Turn a journal timestamp into a short local time string for display."""
     if not value:
@@ -72,9 +90,12 @@ class Target:
     @property
     def label(self) -> str:
         """Human readable name, including the callsign when a name is known."""
+        name = self.name or f"Market {self.market_id}"
+        if self.kind == KIND_CONSTRUCTION:
+            name = clean_construction_name(name)
         if self.display_name and self.display_name != self.name:
             return f"{self.display_name} ({self.name})"
-        return self.name or f"Market {self.market_id}"
+        return name
 
     @property
     def kind_label(self) -> str:

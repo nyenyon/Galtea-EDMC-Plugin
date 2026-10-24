@@ -10,9 +10,10 @@ from .journal import (
     carrier_name_from_stats,
     delivery_tons,
     is_callsign,
+    is_squadron_callsign,
     station_from_entry,
 )
-from .model import CARRIER_KINDS, KIND_CARRIER, KIND_CONSTRUCTION
+from .model import CARRIER_KINDS, KIND_CARRIER, KIND_CONSTRUCTION, KIND_SQUADRON
 from .store import HaulStore
 
 # Entries that tell us where the commander is docked.
@@ -96,9 +97,10 @@ class Tracker:
             return False
         if not context.system and system:
             context.system = str(system)
-        known = self.carrier_names.get(context.market_id)
-        if known:
-            context.display_name = known.get("name", "")
+        if context.kind in CARRIER_KINDS:
+            known = self.carrier_names.get(context.market_id)
+            if known:
+                context.display_name = known.get("name", "")
 
         self.stations[context.market_id] = context
         if set_current:
@@ -124,12 +126,29 @@ class Tracker:
             return False
 
         self.carrier_names[market_id] = {"name": name, "callsign": callsign}
+
+        kind = info.get("kind")
+        if kind is None and is_squadron_callsign(callsign):
+            kind = KIND_SQUADRON
+
         context = self.stations.get(market_id)
-        if context is not None:
+        if context is not None and context.kind in CARRIER_KINDS:
             context.display_name = name
+            if kind:
+                context.kind = kind
+
+        # A drop at a regular station can look like a carrier name ("Fuji
+        # City"), so only enrich targets that are already carriers.
+        known_kind = (
+            context.kind
+            if context is not None
+            else self.store.target_kind(self.cmdr_key, market_id)
+        )
+        if known_kind not in CARRIER_KINDS:
+            return False
 
         return self.store.update_target(
-            self.cmdr_key, market_id, display_name=name, name=callsign or None
+            self.cmdr_key, market_id, display_name=name, name=callsign or None, kind=kind
         )
 
     # -- deliveries ------------------------------------------------------

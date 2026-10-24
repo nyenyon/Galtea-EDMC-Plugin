@@ -173,8 +173,15 @@ class HaulStore:
                 target["name"] = name
                 changed = True
         if kind and kind != target.get("kind"):
+            current = target.get("kind")
             # Only upgrade the vague "carrier" kind, never downgrade a known one.
-            if target.get("kind") in (KIND_CARRIER, None) and kind in (KIND_FLEET, KIND_SQUADRON):
+            if current in (KIND_CARRIER, None) and kind in (KIND_FLEET, KIND_SQUADRON):
+                target["kind"] = kind
+                changed = True
+            elif current == KIND_FLEET and kind == KIND_SQUADRON:
+                # The journal reports squadron carriers as "FleetCarrier"; a
+                # squadron-bank service, a four-character callsign or
+                # CarrierType is the better evidence.
                 target["kind"] = kind
                 changed = True
 
@@ -245,6 +252,13 @@ class HaulStore:
         del record["history"][HISTORY_LIMIT:]
 
     # -- read access -----------------------------------------------------
+
+    def target_kind(self, cmdr_key: str, market_id: int) -> Optional[str]:
+        """Stored kind of one target, without building the whole list."""
+        target = self._cmdr(cmdr_key)["targets"].get(str(int(market_id)))
+        if target is None:
+            return None
+        return str(target.get("kind") or "") or None
 
     def targets(self, cmdr_key: str) -> List[Target]:
         record = self._cmdr(cmdr_key)
