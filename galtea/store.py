@@ -15,6 +15,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .journal import is_squadron_callsign
 from .model import (
     KIND_CARRIER,
     KIND_FLEET,
@@ -52,6 +53,29 @@ class HaulStore:
         if isinstance(raw, dict) and isinstance(raw.get("cmdrs"), dict):
             raw.setdefault("version", SCHEMA_VERSION)
             self.data = raw
+            if self._correct_squadron_kinds():
+                self.save()
+
+    def _correct_squadron_kinds(self) -> bool:
+        """Fix carriers stored as fleet carriers by older plugin versions.
+
+        Journals report squadron carriers as ``FleetCarrier`` and only the
+        four-character callsign (stored as the name) gives them away.
+        """
+        changed = False
+        for record in (self.data.get("cmdrs") or {}).values():
+            record = record or {}
+            for target in (record.get("targets") or {}).values():
+                target = target or {}
+                if target.get("kind") == KIND_FLEET and is_squadron_callsign(target.get("name")):
+                    target["kind"] = KIND_SQUADRON
+                    changed = True
+            for entry in record.get("history") or []:
+                snapshot = (entry or {}).get("target") or {}
+                if snapshot.get("kind") == KIND_FLEET and is_squadron_callsign(snapshot.get("name")):
+                    snapshot["kind"] = KIND_SQUADRON
+                    changed = True
+        return changed
 
     def save(self) -> None:
         try:

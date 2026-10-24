@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -171,6 +172,28 @@ class StoreTest(unittest.TestCase):
         store = HaulStore(self.path)
         self.assertEqual(store.targets("F123"), [])
         self.assertTrue(self.path.with_suffix(".corrupt").exists())
+
+    def test_load_corrects_squadron_carrier_stored_as_fleet(self) -> None:
+        self.add_carrier()
+        raw = json.loads(self.path.read_text(encoding="utf-8"))
+        target = next(iter(raw["cmdrs"]["F123"]["targets"].values()))
+        target["name"] = "0822"
+        self.path.write_text(json.dumps(raw), encoding="utf-8")
+
+        store = HaulStore(self.path)
+        fixed = store.targets("F123")[0]
+        self.assertEqual(fixed.kind, KIND_SQUADRON)
+        self.assertEqual(fixed.kind_label, "Squadron carrier")
+
+        persisted = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            next(iter(persisted["cmdrs"]["F123"]["targets"].values()))["kind"],
+            KIND_SQUADRON,
+        )
+
+    def test_load_keeps_fleet_carriers_with_three_part_callsign(self) -> None:
+        self.add_carrier()
+        self.assertEqual(HaulStore(self.path).targets("F123")[0].kind, KIND_FLEET)
 
 
 if __name__ == "__main__":
