@@ -171,6 +171,7 @@ class PluginUI:
 
         self.details: Optional[tk.Toplevel] = None
         self.details_total: Optional[tk.Label] = None
+        self.details_history_delete: Optional[tk.Button] = None
         self.details_view = "targets"
         self.details_content: Optional[tk.Frame] = None
         self.targets_view: Optional[tk.Frame] = None
@@ -288,8 +289,8 @@ class PluginUI:
         self.details_view = "targets"
         window = tk.Toplevel(self.parent)
         window.title("Galtea Haul Tracker")
-        window.geometry("680x600")
-        window.minsize(560, 440)
+        window.geometry("760x600")
+        window.minsize(600, 440)
         window.protocol("WM_DELETE_WINDOW", self.close_details)
         self.details = window
 
@@ -303,9 +304,10 @@ class PluginUI:
         header.columnconfigure(0, weight=1)
         self.details_total = tk.Label(header, text="Total: 0 t", font="TkHeadingFont")
         self.details_total.grid(row=0, column=0, sticky="w")
-        tk.Button(header, text="Archive all", command=self._reset_all).grid(
-            row=0, column=1, sticky="e"
+        self.details_history_delete = tk.Button(
+            header, text="Delete all", command=self._delete_all_history
         )
+        self.details_history_delete.grid(row=0, column=1, sticky="e")
 
         tabs = tk.Frame(outer)
         tabs.grid(row=1, column=0, sticky="ew", pady=(12, 0))
@@ -381,9 +383,27 @@ class PluginUI:
         self._refresh_details()
 
     def _update_details_tabs(self) -> None:
+        targets = len(self._targets())
+        history = len(self._history())
+        if self.tab_targets is not None:
+            try:
+                self.tab_targets.configure(text=f"Targets ({targets})")
+            except tk.TclError:
+                pass
         if self.tab_history is not None:
             try:
-                self.tab_history.configure(text=f"History ({len(self._history())})")
+                self.tab_history.configure(text=f"History ({history})")
+            except tk.TclError:
+                pass
+        if self.details_history_delete is not None:
+            try:
+                self.details_history_delete.configure(
+                    state=tk.NORMAL if history else tk.DISABLED
+                )
+                if self.details_view == "history":
+                    self.details_history_delete.grid()
+                else:
+                    self.details_history_delete.grid_remove()
             except tk.TclError:
                 pass
 
@@ -417,6 +437,7 @@ class PluginUI:
             except tk.TclError:
                 pass
         self.details = None
+        self.details_history_delete = None
         self.details_content = None
         self.targets_view = None
         self.history_view = None
@@ -540,6 +561,14 @@ class PluginUI:
                 width=8,
                 command=lambda hid=entry.get("id"): self._restore(hid),
             ).grid(row=0, column=5, sticky="e")
+            tk.Button(
+                row,
+                text="Delete",
+                width=6,
+                command=lambda hid=entry.get("id"), label=target.label: self._delete_history(
+                    hid, label
+                ),
+            ).grid(row=0, column=6, sticky="e", padx=(4, 0))
 
         _bind_wheel(self.history_rows, self.history_wheel)
         _apply_theme(self.history_rows)
@@ -687,6 +716,40 @@ class PluginUI:
         if not self.cmdr_key or not history_id:
             return
         if self.store.restore(self.cmdr_key, str(history_id)):
+            self.refresh()
+
+    def _delete_history(self, history_id: Optional[str], label: str = "") -> None:
+        if not self.cmdr_key or not history_id:
+            return
+        parent = self.details if self.details is not None else self.panel
+        name = f'"{label}"' if label else "this entry"
+        if not messagebox.askyesno(
+            "Delete history entry",
+            f"Permanently delete {name} from the history?\n\n"
+            "This cannot be undone.",
+            parent=parent,
+            default="no",
+        ):
+            return
+        if self.store.delete_history(self.cmdr_key, str(history_id)):
+            self.refresh()
+
+    def _delete_all_history(self) -> None:
+        if not self.cmdr_key:
+            return
+        history = self._history()
+        if not history:
+            return
+        parent = self.details if self.details is not None else self.panel
+        if not messagebox.askyesno(
+            "Delete all history entries",
+            f"Permanently delete all {len(history)} history entries?\n\n"
+            "This cannot be undone.",
+            parent=parent,
+            default="no",
+        ):
+            return
+        if self.store.clear_history(self.cmdr_key):
             self.refresh()
 
     # -- preferences -----------------------------------------------------

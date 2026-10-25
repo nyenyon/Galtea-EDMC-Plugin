@@ -494,6 +494,26 @@ class HaulStore:
             return True
         return False
 
+    def delete_history(self, cmdr_key: str, history_id: str) -> bool:
+        """Permanently remove one history entry."""
+        record = self._cmdr(cmdr_key)
+        history = record["history"]
+        for index, entry in enumerate(history):
+            if entry.get("id") == history_id:
+                history.pop(index)
+                self.save()
+                return True
+        return False
+
+    def clear_history(self, cmdr_key: str) -> int:
+        """Permanently remove every history entry; return how many were removed."""
+        record = self._cmdr(cmdr_key)
+        removed = len(record["history"])
+        if removed:
+            record["history"].clear()
+            self.save()
+        return removed
+
     def _archive(self, record: Dict[str, Any], target: Dict[str, Any], when: str, reason: str) -> None:
         record["history"].insert(
             0,

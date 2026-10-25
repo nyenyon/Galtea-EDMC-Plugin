@@ -140,6 +140,28 @@ class StoreTest(unittest.TestCase):
         self.add_carrier(100, when="2026-01-04T09:00:00Z")
         self.assertEqual(sorted(t.tons for t in self.store.targets("F123")), [600, 1320])
 
+    def test_delete_history_entry_is_permanent(self) -> None:
+        self.add_carrier(1320)
+        self.store.reset_target("F123", self.store.targets("F123")[0].id)
+        history_id = self.store.history("F123")[0]["id"]
+
+        self.assertTrue(self.store.delete_history("F123", history_id))
+        self.assertEqual(self.store.history("F123"), [])
+        self.assertEqual(HaulStore(self.path).history("F123"), [])
+
+    def test_delete_unknown_history_entry_is_ignored(self) -> None:
+        self.assertFalse(self.store.delete_history("F123", "missing"))
+
+    def test_clear_history_removes_all_entries(self) -> None:
+        self.add_carrier()
+        self.add_depot()
+        self.store.reset_all("F123")
+
+        self.assertEqual(self.store.clear_history("F123"), 2)
+        self.assertEqual(self.store.history("F123"), [])
+        self.assertEqual(HaulStore(self.path).history("F123"), [])
+        self.assertEqual(self.store.clear_history("F123"), 0)
+
     def test_reset_all_archives_everything(self) -> None:
         self.add_carrier()
         self.add_depot()

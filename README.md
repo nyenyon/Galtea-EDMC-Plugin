@@ -36,7 +36,7 @@ Total: 3,940 t
 [ Details ]
 ```
 
-The details window has **Targets** and **History** tabs. **Targets** is shown first and lists every target with its own **Report** and **Archive** buttons; **Archive all** sits in the header. The **History** tab shows the number of archived entries in its label and lists name, type, tonnage, whether the entry was reported, and the archival time, with a **Restore** button for each entry.
+The details window has **Targets (N)** and **History (N)** tabs, both showing their entry count. **Targets** is shown first and lists every target with its own **Report** and **Archive** buttons. The **History** tab lists name, type, tonnage, whether the entry was reported, and the archival time, with **Restore** and **Delete** buttons for each entry. **Delete** removes an entry permanently after a confirmation; **Delete all** (shown on the History tab) clears the whole history, also after a confirmation.
 
 **Report** shows the Project Galtea Discord/Sicord macro for that target in a copyable field:
 
@@ -50,7 +50,7 @@ Once the tonnage has been reported, the **Reported** button in the same window a
 
 Every report is stored as its own batch with a unique ID. Reporting the same carrier again later creates a separate history entry. If you restore an older batch while the same carrier already has a newer one, both stay separate and new deliveries go to the newest batch. In that case the details window and the report window show the short batch IDs so you can tell the entries apart.
 
-Archiving an entry always moves it to the history instead of discarding it, so an accidental removal can be undone. The history keeps the last 200 entries.
+Archiving an entry always moves it to the history instead of discarding it, so an accidental removal can be undone. The history keeps the last 200 entries. Deleting an entry from the history, or using **Delete all**, is permanent and cannot be undone; both actions ask for confirmation first.
 
 ## Install
 
