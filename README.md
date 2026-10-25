@@ -1,5 +1,8 @@
 # Galtea Haul Tracker (EDMC plugin)
 
+> **Note:** This plugin was created entirely with AI agents. Code, tests and
+> documentation were generated and reviewed by them.
+
 An [EDMarketConnector](https://github.com/EDCD/EDMarketConnector) plugin that counts the tonnage you sell at **fleet carriers** and **squadron carriers**, and the commodities you deliver to **construction sites** (space and planetary), with running totals per target.
 
 This is step 1 of the Galtea plugin: a focused haul tracker, nothing else.
@@ -55,9 +58,17 @@ Deletes always move the entry to the history instead of discarding it, so an acc
 
 The plugin needs no third-party packages and makes no network requests.
 
+## Settings
+
+The plugin adds a **Galtea Haul Tracker** tab to EDMC's settings:
+
+- **Discord user for the Report command** – the handle used as `user:@name` in the `/addscore` command. The default is the placeholder `@yourdiscordname`; set your own handle before reporting. It is stored in EDMC's configuration and survives restarts.
+- **Reset all tracked entries…** – archives every active target in the history.
+- The footer shows the plugin version and links to the GitHub repository.
+
 ## Data file
 
-Totals are stored in `data/haul_tracker.json` inside the plugin folder. A corrupt file is moved to `haul_tracker.corrupt` and tracking starts fresh.
+Totals are stored in `data/haul_tracker.json` inside the plugin folder. The file has a schema version; older data files are migrated automatically, with each target receiving a unique batch id. A corrupt file is moved to `haul_tracker.corrupt` and tracking starts fresh.
 
 > Note: reinstalling/updating the plugin by replacing the folder removes the data file. Back it up if that matters.
 
@@ -67,7 +78,7 @@ Totals are stored in `data/haul_tracker.json` inside the plugin folder. A corrup
 - Squadron carriers are sometimes written as `StationType: "FleetCarrier"` in journals. The plugin recognises them by the `squadronBank` station service or by the four-character callsign, so they are labelled **Squadron carrier**.
 - Construction sites are named `Orbital Construction Site: <name>` / `Planetary Construction Site: <name>` in the journal; the display shows only `<name>`, the station that is being built.
 - Startup: EDMC only forwards journal events while the game is running. The plugin remembers the last active commander, so the stored totals are visible immediately after restarting EDMC; the display switches as soon as the journal reports a different commander.
-- Theme: the plugin uses classic Tk widgets and registers them with EDMC's `theme` module, so the **default** and **dark** themes (including theme changes while EDMC is running) are respected.
+- Theme: the plugin's own windows use classic Tk widgets and register them with EDMC's `theme` module, so the **default** and **dark** themes (including theme changes while EDMC is running) are respected. The settings tab keeps EDMC's default colours because EDMC does not theme plugin settings tabs.
 - If EDMC is started while you are already docked, the docking event has already been consumed. A sale at a fleet-carrier callsign-shaped station name is still recognised as a carrier (type shown as “Carrier” until a docking event refines it).
 - CQC sessions are ignored.
 
@@ -75,6 +86,7 @@ Totals are stored in `data/haul_tracker.json` inside the plugin folder. A corrup
 
 ```sh
 python3 -m unittest discover -s tests -v
+python3 -m compileall -q load.py galtea tests
 ```
 
 No dependencies; the tests use the standard library only.
