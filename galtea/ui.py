@@ -267,10 +267,13 @@ class PluginUI:
         for target in targets[:PANEL_ROWS]:
             row = tk.Frame(self.panel_rows)
             row.pack(fill="x")
-            tk.Label(row, text=_short(target.label, 20), anchor="w").pack(
-                side="left", fill="x", expand=True
+            # Fixed columns so widening EDMC does not stretch the numbers.
+            tk.Label(row, text=_short(target.label, 24), width=24, anchor="w").grid(
+                row=0, column=0, sticky="w"
             )
-            tk.Label(row, text=f"{format_number(target.tons)} t", anchor="e").pack(side="right")
+            tk.Label(
+                row, text=f"{format_number(target.tons)} t", width=10, anchor="e"
+            ).grid(row=0, column=1, sticky="e")
 
         hidden = len(targets) - PANEL_ROWS
         self.panel_more.configure(text=f"+{hidden} more" if hidden > 0 else "")

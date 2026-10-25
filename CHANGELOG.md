@@ -43,6 +43,8 @@ Versions match `VERSION` in `load.py`.
   **Delete all** on **Finished hauls** (permanently clears the list).
 - All confirmation dialogs now use the plugin's own themed modal layout
   instead of native message boxes.
+- The main-window target list keeps its tonnage column at a fixed width, so
+  widening EDMC no longer stretches the numbers.
 - Every target now has a unique batch ID. Reporting the same carrier again
   creates a separate entry in **Finished hauls**, and restoring a reported
   batch keeps it separate from a newer batch instead of merging the tonnage.
