@@ -32,7 +32,7 @@ Total: 3,940 t
 [ Details ]
 ```
 
-The details window lists every target with its own **Report** and **Remove** buttons, a **Remove all** button, and a **History** section containing every archived entry (name, type, tonnage, deletion time) with a **Restore** button.
+The details window lists every target with its own **Report** and **Archive** buttons, an **Archive all** button, and a **History** section containing every archived entry with a **Restore** button. The history shows name, type, tonnage, whether the entry was reported, and the archival time.
 
 **Report** shows the Discord/Sicord macro for that target in a copyable field:
 
@@ -42,11 +42,11 @@ The details window lists every target with its own **Report** and **Remove** but
 
 `comment:` is the target as shown in the list: the carrier name with its callsign, or the construction site being built. The Discord handle is configurable in the plugin preferences; the default is the placeholder `@yourdiscordname`, so no real user is credited by accident. The configured handle is stored in EDMC's configuration and persists across restarts. While the placeholder is still in use, the report window shows a reminder to change it in the plugin preferences.
 
-Once the tonnage has been reported, the **Reported** button in the same window archives the target: it disappears from the running totals and moves to the history, just like **Remove**. It can be restored from there if needed.
+Once the tonnage has been reported, the **Reported** button in the same window archives the target: it disappears from the running totals and moves to the history, just like **Archive**. It can be restored from there if needed.
 
 Every report is stored as its own batch with a unique ID. Reporting the same carrier again later creates a separate history entry. If you restore an older batch while the same carrier already has a newer one, both stay separate and new deliveries go to the newest batch. In that case the details window and the report window show the short batch IDs so you can tell the entries apart.
 
-Removing an entry always moves it to the history instead of discarding it, so an accidental removal can be undone. The history keeps the last 200 entries.
+Archiving an entry always moves it to the history instead of discarding it, so an accidental removal can be undone. The history keeps the last 200 entries.
 
 ## Install
 
@@ -63,7 +63,7 @@ The plugin needs no third-party packages and makes no network requests.
 The plugin adds a **Galtea Haul Tracker** tab to EDMC's settings:
 
 - **Discord user for the Report command** – the handle used as `user:@name` in the `/addscore` command. The default is the placeholder `@yourdiscordname`; set your own handle before reporting. It is stored in EDMC's configuration and survives restarts.
-- **Remove all tracked entries…** – archives every active target in the history.
+- **Archive all tracked entries…** – archives every active target in the history.
 - The footer shows the plugin version and links to the GitHub repository.
 
 ## Data file

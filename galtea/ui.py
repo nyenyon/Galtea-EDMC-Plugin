@@ -268,8 +268,8 @@ class PluginUI:
 
         window = tk.Toplevel(self.parent)
         window.title("Galtea Haul Tracker")
-        window.geometry("640x600")
-        window.minsize(520, 440)
+        window.geometry("680x600")
+        window.minsize(560, 440)
         window.protocol("WM_DELETE_WINDOW", self.close_details)
         self.details = window
 
@@ -284,7 +284,7 @@ class PluginUI:
         header.columnconfigure(0, weight=1)
         self.details_total = tk.Label(header, text="Total: 0 t", font="TkHeadingFont")
         self.details_total.grid(row=0, column=0, sticky="w")
-        tk.Button(header, text="Remove all", command=self._reset_all).grid(
+        tk.Button(header, text="Archive all", command=self._reset_all).grid(
             row=0, column=1, sticky="e"
         )
 
@@ -292,12 +292,12 @@ class PluginUI:
         targets_box, self.target_rows, self.target_wheel = _scroll_area(outer, 220)
         targets_box.grid(row=2, column=0, sticky="nsew")
 
-        tk.Label(outer, text="History (reported and removed entries)").grid(
+        tk.Label(outer, text="History (reported and archived entries)").grid(
             row=3, column=0, sticky="w", pady=(14, 2)
         )
         tk.Label(
             outer,
-            text="Reported or removed entries stay here so they can be restored.",
+            text="Reported or archived entries stay here so they can be restored.",
         ).grid(row=4, column=0, sticky="w")
         history_box, self.history_rows, self.history_wheel = _scroll_area(outer, 160)
         history_box.grid(row=5, column=0, sticky="nsew")
@@ -362,8 +362,8 @@ class PluginUI:
             ).grid(row=0, column=3, sticky="e", padx=(0, 4))
             tk.Button(
                 row,
-                text="Remove",
-                width=6,
+                text="Archive",
+                width=7,
                 command=lambda tid=target.id: self._reset_target(tid),
             ).grid(row=0, column=4, sticky="e")
 
@@ -403,7 +403,7 @@ class PluginUI:
             row.pack(fill="x", pady=1)
             row.columnconfigure(0, weight=1)
 
-            tk.Label(row, text=_short(target.label, 26), anchor="w").grid(
+            tk.Label(row, text=_short(target.label, 24), anchor="w").grid(
                 row=0, column=0, sticky="ew"
             )
             tk.Label(row, text=target.kind_label, width=15, anchor="w").grid(
@@ -412,15 +412,22 @@ class PluginUI:
             tk.Label(row, text=f"{format_number(target.tons)} t", width=10, anchor="e").grid(
                 row=0, column=2, sticky="e", padx=(8, 8)
             )
+            reported = str(entry.get("reason") or "") == "reported"
+            tk.Label(
+                row,
+                text="Reported" if reported else "\u2014",
+                width=9,
+                anchor="w",
+            ).grid(row=0, column=3, sticky="w", padx=(0, 8))
             tk.Label(row, text=format_timestamp(entry.get("deleted_at", "")), width=16, anchor="w").grid(
-                row=0, column=3, sticky="w"
+                row=0, column=4, sticky="w"
             )
             tk.Button(
                 row,
                 text="Restore",
                 width=8,
                 command=lambda hid=entry.get("id"): self._restore(hid),
-            ).grid(row=0, column=4, sticky="e")
+            ).grid(row=0, column=5, sticky="e")
 
         _bind_wheel(self.history_rows, self.history_wheel)
         _apply_theme(self.history_rows)
@@ -555,7 +562,7 @@ class PluginUI:
             return
         parent = self.details if self.details is not None else self.panel
         if not messagebox.askyesno(
-            "Remove all entries",
+            "Archive all entries",
             "Move every tracked target to the history?\n\nThe tonnage is not lost: "
             "each entry can be restored from the history.",
             parent=parent,
@@ -607,7 +614,7 @@ class PluginUI:
         )
         hint.grid(row=4, column=0, sticky="w", pady=(0, 8))
 
-        nb.Button(frame, text="Remove all tracked entries\u2026", command=self._reset_all).grid(
+        nb.Button(frame, text="Archive all tracked entries\u2026", command=self._reset_all).grid(
             row=5, column=0, sticky="w"
         )
 
