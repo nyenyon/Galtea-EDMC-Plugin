@@ -11,8 +11,9 @@ Versions match `VERSION` in `load.py`.
 
 - **Reported** button in the "Report delivery" window: once the tonnage has
   been reported, it removes the target from the running totals and moves it to
-  the history, where it can be restored.
-- The history shows whether an entry was archived with **Reported**.
+  **Finished hauls**, where it can be restored.
+- The **Finished hauls** tab shows whether an entry was archived with
+  **Reported**.
 - If restoring a report leaves several active batches for the same carrier,
   the details window and the report window show each batch's short ID so they
   can be told apart.
@@ -20,26 +21,27 @@ Versions match `VERSION` in `load.py`.
   placeholder `@yourdiscordname` is still in use.
 - The plugin settings tab shows the version and links to the GitHub repository.
 - The **Active hauls** tab shows the number of active entries in its label.
-- History entries have a **Delete** button that permanently removes the entry
-  after a confirmation. **Delete all** on the History tab clears the whole
-  history, also after a confirmation.
+- Entries in **Finished hauls** have a **Delete** button that permanently
+  removes the entry after a confirmation. **Delete all** on that tab clears the
+  whole list, also after a confirmation.
 - Pressing **Reported** without pressing **Copy** first asks for confirmation,
   preventing accidental archiving.
 
 ### Changed
 
-- The details window now has **Active hauls** and **History** tabs. The history is
-  only shown when selected, and its tab label shows the number of entries.
+- The details window now has **Active hauls** and **Finished hauls** tabs. The
+  finished list is only shown when its tab is selected, and the tab label shows
+  the number of entries.
 - The target button is now labelled **Archive** (and **Archive all tracked
-  entries…** in the settings) instead of **Reset**; entries still move to the
-  history and can be restored.
+  entries…** in the settings) instead of **Reset**; entries still move to
+  **Finished hauls** and can be restored.
 - The details header action follows the active tab: **Archive all** on
-  Active hauls (moves every active target to the history) and **Delete all**
-  on History (permanently clears the history).
+  **Active hauls** (moves every active target to **Finished hauls**) and
+  **Delete all** on **Finished hauls** (permanently clears the list).
 - Every target now has a unique batch ID. Reporting the same carrier again
-  creates a separate history entry, and restoring a reported batch keeps it
-  separate from a newer batch instead of merging the tonnage. Existing data
-  files are migrated automatically.
+  creates a separate entry in **Finished hauls**, and restoring a reported
+  batch keeps it separate from a newer batch instead of merging the tonnage.
+  Existing data files are migrated automatically.
 - The default Discord handle used by the **Report** command is now the
   placeholder `@yourdiscordname` instead of `@nyenyon`, so tonnage is not
   accidentally credited to the wrong user. A handle entered in the plugin

@@ -316,7 +316,7 @@ class PluginUI:
             tabs, "Active hauls", "targets"
         )
         self.tab_history, self.tab_history_bar = self._build_details_tab(
-            tabs, "History (0)", "history"
+            tabs, "Finished hauls (0)", "history"
         )
 
         # Dim line under the whole tab strip; the active tab gets an accent
@@ -368,7 +368,7 @@ class PluginUI:
         return label, bar
 
     def _show_details_view(self, view: str) -> None:
-        """Switch between the targets and history tabs."""
+        """Switch between the active and finished hauls tabs."""
         self.details_view = "history" if view == "history" else "targets"
         if self.targets_view is not None and self.history_view is not None:
             if self.details_view == "targets":
@@ -389,7 +389,7 @@ class PluginUI:
                 pass
         if self.tab_history is not None:
             try:
-                self.tab_history.configure(text=f"History ({history})")
+                self.tab_history.configure(text=f"Finished hauls ({history})")
             except tk.TclError:
                 pass
         if self.details_bulk is not None:
@@ -526,7 +526,7 @@ class PluginUI:
 
         _clear(self.history_rows)
         if not history:
-            tk.Label(self.history_rows, text="Nothing archived yet.").pack(anchor="w", pady=6)
+            tk.Label(self.history_rows, text="No finished hauls yet.").pack(anchor="w", pady=6)
             _bind_wheel(self.history_rows, self.history_wheel)
             _apply_theme(self.history_rows)
             return
@@ -741,8 +741,8 @@ class PluginUI:
         parent = self.details if self.details is not None else self.panel
         name = f'"{label}"' if label else "this entry"
         if not messagebox.askyesno(
-            "Delete history entry",
-            f"Permanently delete {name} from the history?\n\n"
+            "Delete finished haul",
+            f"Permanently delete {name} from Finished hauls?\n\n"
             "This cannot be undone.",
             parent=parent,
             default="no",
@@ -759,8 +759,8 @@ class PluginUI:
             return
         parent = self.details if self.details is not None else self.panel
         if not messagebox.askyesno(
-            "Delete all history entries",
-            f"Permanently delete all {len(history)} history entries?\n\n"
+            "Delete all finished hauls",
+            f"Permanently delete all {len(history)} finished hauls?\n\n"
             "This cannot be undone.",
             parent=parent,
             default="no",
