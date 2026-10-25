@@ -456,16 +456,20 @@ class PluginUI:
 
         buttons = tk.Frame(frame)
         buttons.pack(fill="x")
+        for column in range(3):
+            buttons.columnconfigure(column, weight=1)
         copy_button = tk.Button(buttons, text="Copy", width=8)
         copy_button.configure(command=lambda: self._copy_report(command, copy_button))
-        copy_button.pack(side="left")
+        copy_button.grid(row=0, column=0, sticky="w")
         tk.Button(
             buttons,
             text="Reported",
             width=10,
             command=lambda: self._mark_reported(target),
-        ).pack(side="left", padx=(6, 0))
-        tk.Button(buttons, text="Close", width=8, command=self._close_report).pack(side="right")
+        ).grid(row=0, column=1)
+        tk.Button(buttons, text="Close", width=8, command=self._close_report).grid(
+            row=0, column=2, sticky="e"
+        )
 
         _apply_theme(window)
         try:
