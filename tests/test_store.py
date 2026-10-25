@@ -200,6 +200,36 @@ class StoreTest(unittest.TestCase):
     def test_last_commander_of_an_empty_store_is_unknown(self) -> None:
         self.assertEqual(self.store.last_commander(), "")
 
+    def test_carrier_name_cache_survives_restart(self) -> None:
+        self.store.remember_carrier("F123", 3709409280, "Test Carrier", "T3S-TIE")
+        self.store.remember_carrier("F123", None, "Other Carrier", "X9K-WTW")
+
+        reloaded = HaulStore(self.path)
+        self.assertEqual(
+            reloaded.carrier_name("F123", 3709409280)["name"], "Test Carrier"
+        )
+        self.assertEqual(
+            reloaded.carrier_name("F123", callsign="t3s-tie")["name"], "Test Carrier"
+        )
+        self.assertEqual(
+            reloaded.carrier_name("F123", callsign="X9K-WTW")["name"], "Other Carrier"
+        )
+
+    def test_carrier_name_is_enriched_with_market_id(self) -> None:
+        self.store.remember_carrier("F123", None, "Test Carrier", "T3S-TIE")
+        self.store.remember_carrier("F123", 3709409280, "Test Carrier", "T3S-TIE")
+
+        self.assertEqual(
+            self.store.carrier_name("F123", 3709409280)["name"], "Test Carrier"
+        )
+        raw = json.loads(self.path.read_text(encoding="utf-8"))
+        carriers = raw["cmdrs"]["F123"]["carriers"]
+        self.assertEqual(len(carriers), 1)
+
+    def test_carrier_name_without_identifier_is_ignored(self) -> None:
+        self.assertEqual(self.store.remember_carrier("F123", None, "Test Carrier"), {})
+        self.assertEqual(self.store.carrier_name("F123"), {})
+
     def test_update_target_upgrades_unknown_carrier(self) -> None:
         self.store.add(
             "F123",

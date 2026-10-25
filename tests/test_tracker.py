@@ -152,6 +152,72 @@ class TrackerTest(unittest.TestCase):
         self.assertEqual(target.display_name, "Test Carrier")
         self.assertEqual(target.label, "Test Carrier (T3S-TIE)")
 
+    def test_carrier_name_only_drop_before_docking(self) -> None:
+        self.feed(
+            {
+                "event": "SupercruiseDestinationDrop",
+                "MarketID": 3709409280,
+                "Type": "Test Carrier",
+            }
+        )
+        self.feed(FLEET_CARRIER)
+        self.feed(sale(1320))
+
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.display_name, "Test Carrier")
+        self.assertEqual(target.label, "Test Carrier (T3S-TIE)")
+
+    def test_carrier_name_only_drop_after_docking(self) -> None:
+        self.feed(FLEET_CARRIER)
+        self.feed(sale(1320))
+        self.feed(
+            {
+                "event": "SupercruiseDestinationDrop",
+                "MarketID": 3709409280,
+                "Type": "Test Carrier",
+            }
+        )
+
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.display_name, "Test Carrier")
+        self.assertEqual(target.label, "Test Carrier (T3S-TIE)")
+
+    def test_carrier_name_drop_without_market_id(self) -> None:
+        self.feed(
+            {
+                "event": "SupercruiseDestinationDrop",
+                "Type": "Test Carrier T3S-TIE",
+            }
+        )
+        self.feed(FLEET_CARRIER)
+        self.feed(sale(1320))
+
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.display_name, "Test Carrier")
+        self.assertEqual(target.label, "Test Carrier (T3S-TIE)")
+
+    def test_carrier_name_cache_survives_restart(self) -> None:
+        self.feed(
+            {
+                "event": "SupercruiseDestinationDrop",
+                "MarketID": 3709409280,
+                "Type": "Test Carrier T3S-TIE",
+            }
+        )
+
+        store = HaulStore(Path(self.tempdir.name) / "haul.json")
+        tracker = Tracker(store)
+        tracker.process(
+            FLEET_CARRIER, "Bleae Thua ED-D c12-5", "", fid="F123", cmdr="Test"
+        )
+        tracker.process(
+            sale(1320), "Bleae Thua ED-D c12-5", "", fid="F123", cmdr="Test"
+        )
+
+        target = store.targets("F123")[0]
+        self.assertEqual(target.display_name, "Test Carrier")
+        self.assertEqual(target.label, "Test Carrier (T3S-TIE)")
+
     def test_squadron_carrier_is_recognised_despite_fleetcarrier_type(self) -> None:
         self.feed(SQUADRON_CARRIER_AS_FLEET)
         self.feed(sale(105, market_id=3709409998))

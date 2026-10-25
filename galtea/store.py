@@ -26,6 +26,14 @@ from .model import (
 
 SCHEMA_VERSION = 2
 HISTORY_LIMIT = 200
+CARRIER_LIMIT = 500
+
+
+def _as_int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 class HaulStore:
@@ -150,6 +158,8 @@ class HaulStore:
             record["name"] = cmdr_name
         record.setdefault("targets", {})
         record.setdefault("history", [])
+        if not isinstance(record.get("carriers"), dict):
+            record["carriers"] = {}
         return record
 
     def cmdr_name(self, cmdr_key: str) -> str:
@@ -198,6 +208,90 @@ class HaulStore:
         self._cmdr(key, cmdr_name)
         if changed:
             self.save()
+
+    # -- carrier names ---------------------------------------------------
+
+    def carrier_name(
+        self, cmdr_key: str, market_id: Optional[int] = None, callsign: str = ""
+    ) -> Dict[str, str]:
+        """Best known display name for a carrier, by market id or callsign."""
+        record = self._cmdr(cmdr_key)
+        wanted_id = _as_int(market_id)
+        wanted_callsign = str(callsign or "").strip().upper()
+
+        for entry in (record.get("carriers") or {}).values():
+            if not isinstance(entry, dict):
+                continue
+            entry_id = _as_int(entry.get("market_id"))
+            entry_callsign = str(entry.get("callsign") or "").strip().upper()
+            if (wanted_id and entry_id == wanted_id) or (
+                wanted_callsign and entry_callsign == wanted_callsign
+            ):
+                return {
+                    "name": str(entry.get("name") or ""),
+                    "callsign": str(entry.get("callsign") or ""),
+                }
+        return {}
+
+    def remember_carrier(
+        self,
+        cmdr_key: str,
+        market_id: Optional[int],
+        name: str,
+        callsign: str = "",
+    ) -> Dict[str, Any]:
+        """Persist a carrier display name and return the stored record."""
+        name = str(name or "").strip()
+        if not name:
+            return {}
+        wanted_id = _as_int(market_id)
+        wanted_callsign = str(callsign or "").strip()
+        if not wanted_id and not wanted_callsign:
+            return {}
+
+        record = self._cmdr(cmdr_key)
+        carriers = record["carriers"]
+
+        entry: Optional[Dict[str, Any]] = None
+        for existing in carriers.values():
+            if not isinstance(existing, dict):
+                continue
+            existing_id = _as_int(existing.get("market_id"))
+            existing_callsign = str(existing.get("callsign") or "").strip().upper()
+            if (wanted_id and existing_id == wanted_id) or (
+                wanted_callsign and existing_callsign == wanted_callsign.upper()
+            ):
+                entry = existing
+                break
+
+        changed = False
+        if entry is None:
+            key = str(wanted_id) if wanted_id else wanted_callsign.upper()
+            entry = {}
+            carriers[key] = entry
+            changed = True
+
+        if wanted_id and _as_int(entry.get("market_id")) != wanted_id:
+            entry["market_id"] = wanted_id
+            changed = True
+        if wanted_callsign and str(entry.get("callsign") or "") != wanted_callsign:
+            entry["callsign"] = wanted_callsign
+            changed = True
+        if entry.get("name") != name:
+            entry["name"] = name
+            changed = True
+
+        while len(carriers) > CARRIER_LIMIT:
+            carriers.pop(next(iter(carriers)))
+            changed = True
+
+        if changed:
+            self.save()
+        return {
+            "market_id": _as_int(entry.get("market_id")),
+            "callsign": str(entry.get("callsign") or ""),
+            "name": name,
+        }
 
     @staticmethod
     def _targets_for_market(

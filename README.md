@@ -72,13 +72,13 @@ The plugin adds a **Galtea Haul Tracker** tab to EDMC's settings:
 
 ## Data file
 
-Totals are stored in `data/haul_tracker.json` inside the plugin folder. The file has a schema version; older data files are migrated automatically, with each target receiving a unique batch id. A corrupt file is moved to `haul_tracker.corrupt` and tracking starts fresh.
+Totals are stored in `data/haul_tracker.json` inside the plugin folder. The file has a schema version; older data files are migrated automatically, with each target receiving a unique batch id. The file also caches carrier display names per commander, so learned names survive restarts. A corrupt file is moved to `haul_tracker.corrupt` and tracking starts fresh.
 
 > Note: `data/` is local and git-ignored, so it is not part of the repository or a release archive. Replacing the plugin folder (deleting the old one and copying the new one) removes it; updating with `git pull` or copying files over the existing folder keeps it. Back it up if that matters.
 
 ## Good to know
 
-- Carrier names: the journal only knows a carrier's **callsign** (e.g. `T3S-TIE` for fleet carriers, `0822` for squadron carriers) when you dock. The pretty name appears when the journal reveals it (`SupercruiseDestinationDrop`, or `CarrierStats`/`CarrierNameChanged` for your own carrier); then the display becomes `Name (CALLSIGN)`. Until then only the callsign is shown.
+- Carrier names: the journal only knows a carrier's **callsign** (e.g. `T3S-TIE` for fleet carriers, `0822` for squadron carriers) when you dock. The pretty name is read from `SupercruiseDestinationDrop` (also when it contains only the name, a localized variant, or no `MarketID`) and from `CarrierStats`/`CarrierNameChanged` for your own carrier; then the display becomes `Name (CALLSIGN)`. Names are cached per commander in the data file, so a carrier you have visited before is shown by name immediately. If the game reports only the callsign on a first visit, the name appears as soon as the journal provides it.
 - Squadron carriers are sometimes written as `StationType: "FleetCarrier"` in journals. The plugin recognises them by the `squadronBank` station service or by the four-character callsign, so they are labelled **Squadron carrier**.
 - Construction sites are named `Orbital Construction Site: <name>` / `Planetary Construction Site: <name>` in the journal; the display shows only `<name>`, the station that is being built.
 - Startup: EDMC only forwards journal events while the game is running. The plugin remembers the last active commander, so the stored totals are visible immediately after restarting EDMC; the display switches as soon as the journal reports a different commander.

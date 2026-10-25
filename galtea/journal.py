@@ -12,11 +12,14 @@ one event per target type avoids double counting.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from .model import KIND_CARRIER, KIND_CONSTRUCTION, KIND_FLEET, KIND_SQUADRON
+
+logger = logging.getLogger("GalteaHaulTracker")
 
 # StationType values seen in real journals.  Construction sites show up as
 # either a depot (space or planetary) or, during the very first build, as a
@@ -39,6 +42,13 @@ SQUADRON_CALLSIGN_RE = re.compile(r"^[A-Z0-9]{4}$")
 DROP_NAME_RE = re.compile(
     r"^(?P<name>.+?)\s+(?P<callsign>(?:[A-Z0-9]{3}-[A-Z0-9]{3}|[A-Z0-9]{4}))$"
 )
+# Tokens that describe the destination type rather than a carrier name.
+GENERIC_DESTINATION_NAMES = {
+    "fleetcarrier",
+    "fleet carrier",
+    "squadroncarrier",
+    "squadron carrier",
+}
 
 
 @dataclass
@@ -136,24 +146,55 @@ def delivery_tons(entry: Dict[str, Any]) -> int:
     return 0
 
 
+def _log_unparsed_drop(entry: Dict[str, Any]) -> None:
+    logger.debug(
+        "SupercruiseDestinationDrop without a usable carrier name: "
+        "Type=%r Type_Localised=%r MarketID=%r",
+        entry.get("Type"),
+        entry.get("Type_Localised"),
+        entry.get("MarketID"),
+    )
+
+
 def carrier_name_from_drop(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """``SupercruiseDestinationDrop`` can reveal a carrier's display name.
 
-    The journal writes the carrier's name followed by its callsign, e.g.
-    ``"Type": "Test Carrier T3S-TIE"`` or, for a squadron carrier,
-    ``"Type": "[SCC] The Knave 0822"``.
+    The journal usually writes the carrier's name followed by its callsign,
+    e.g. ``"Type": "Test Carrier T3S-TIE"`` or, for a squadron carrier,
+    ``"Type": "[SCC] The Knave 0822"``.  Some versions omit the callsign or
+    provide the name through ``Type_Localised`` instead.
     """
-    market_id = entry.get("MarketID")
-    if market_id is None:
+    market_id: Optional[int] = None
+    raw_id = entry.get("MarketID")
+    if raw_id is not None:
+        try:
+            market_id = int(raw_id)
+        except (TypeError, ValueError):
+            market_id = None
+
+    text = str(entry.get("Type") or "").strip()
+    localized = str(entry.get("Type_Localised") or "").strip()
+    if not text or text.startswith("$"):
+        text = localized
+    if not text or text.lower() in GENERIC_DESTINATION_NAMES:
+        _log_unparsed_drop(entry)
         return None
-    match = DROP_NAME_RE.match(str(entry.get("Type") or "").strip())
-    if not match:
+
+    match = DROP_NAME_RE.match(text)
+    if match:
+        return {
+            "market_id": market_id,
+            "name": match.group("name").strip(),
+            "callsign": match.group("callsign").strip(),
+        }
+
+    if is_callsign(text) or is_squadron_callsign(text):
+        # A bare callsign carries no display name; docking already knows it.
+        _log_unparsed_drop(entry)
         return None
-    return {
-        "market_id": int(market_id),
-        "name": match.group("name").strip(),
-        "callsign": match.group("callsign").strip(),
-    }
+
+    # Some journal versions report only the carrier name, without callsign.
+    return {"market_id": market_id, "name": text, "callsign": ""}
 
 
 def carrier_name_from_stats(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:

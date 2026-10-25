@@ -29,7 +29,9 @@ class Tracker:
         self.store = store
         self.current: Optional[StationContext] = None
         self.stations: Dict[int, StationContext] = {}
-        self.carrier_names: Dict[int, Dict[str, str]] = {}
+        # Names learned from a drop before we know whether the destination is a
+        # carrier.  They are persisted once docking confirms the station kind.
+        self.carrier_names: Dict[str, Dict[str, str]] = {}
         # Show the last active commander right away: EDMC only sends a
         # synthetic StartUp event when the game is already running.
         self.cmdr_key: str = store.last_commander()
@@ -102,9 +104,22 @@ class Tracker:
         if not context.system and system:
             context.system = str(system)
         if context.kind in CARRIER_KINDS:
-            known = self.carrier_names.get(context.market_id)
-            if known:
-                context.display_name = known.get("name", "")
+            known = self.store.carrier_name(
+                self.cmdr_key, context.market_id, context.name
+            )
+            if not known:
+                known = self.carrier_names.get(str(context.market_id)) or {}
+                if not known:
+                    known = self.carrier_names.get(context.name.upper()) or {}
+            name = str(known.get("name") or "")
+            if name:
+                context.display_name = name
+                self.store.remember_carrier(
+                    self.cmdr_key,
+                    context.market_id,
+                    name,
+                    str(known.get("callsign") or "") or context.name,
+                )
 
         self.stations[context.market_id] = context
         if set_current:
@@ -120,40 +135,105 @@ class Tracker:
             display_name=context.display_name,
         )
 
+    def _station_context(
+        self, market_id: Optional[int], callsign: str
+    ) -> Optional[StationContext]:
+        """Find a known station by market id or callsign."""
+        if market_id:
+            context = self.stations.get(int(market_id))
+            if context is not None:
+                return context
+        if callsign:
+            wanted = callsign.upper()
+            for context in self.stations.values():
+                if context.name.upper() == wanted:
+                    return context
+        return None
+
+    def _carrier_target_ids(
+        self, market_id: Optional[int], callsign: str
+    ) -> set[int]:
+        """Active carrier targets for a market id or callsign."""
+        ids: set[int] = set()
+        if market_id:
+            wanted_id = int(market_id)
+            if self.store.target_kind(self.cmdr_key, wanted_id) in CARRIER_KINDS:
+                ids.add(wanted_id)
+        if callsign:
+            wanted = callsign.upper()
+            for target in self.store.targets(self.cmdr_key):
+                if target.kind in CARRIER_KINDS and target.name.upper() == wanted:
+                    ids.add(target.market_id)
+        return ids
+
     def _note_carrier_name(self, info: Optional[Dict[str, Any]]) -> bool:
         if not info:
             return False
-        market_id = int(info["market_id"])
-        name = str(info.get("name") or "")
-        callsign = str(info.get("callsign") or "")
+        market_id = info.get("market_id")
+        name = str(info.get("name") or "").strip()
+        callsign = str(info.get("callsign") or "").strip()
         if not name:
             return False
 
-        self.carrier_names[market_id] = {"name": name, "callsign": callsign}
+        context = self._station_context(market_id, callsign)
+        target_ids = self._carrier_target_ids(market_id, callsign)
 
+        if context is not None:
+            market_id = market_id or context.market_id
+            callsign = callsign or context.name
+        elif not market_id and target_ids:
+            market_id = next(iter(target_ids))
+
+        # A drop at a regular station can look like a carrier name ("Fuji
+        # City"), so never rename a known non-carrier.
+        if context is not None and context.kind not in CARRIER_KINDS and not target_ids:
+            return False
+
+        has_carrier = (
+            bool(callsign)
+            or (context is not None and context.kind in CARRIER_KINDS)
+            or bool(target_ids)
+        )
+        if not has_carrier:
+            # Name-only drop at an unknown destination: remember it in memory
+            # until docking tells us whether it is a carrier.
+            if market_id:
+                self.carrier_names[str(int(market_id))] = {
+                    "name": name,
+                    "callsign": "",
+                }
+            return False
+
+        record = self.store.remember_carrier(self.cmdr_key, market_id, name, callsign)
+        if not record:
+            return False
+
+        resolved_id = int(record.get("market_id") or 0)
+        resolved_callsign = str(record.get("callsign") or "")
         kind = info.get("kind")
-        if kind is None and is_squadron_callsign(callsign):
+        if kind is None and is_squadron_callsign(resolved_callsign):
             kind = KIND_SQUADRON
 
-        context = self.stations.get(market_id)
         if context is not None and context.kind in CARRIER_KINDS:
             context.display_name = name
             if kind:
                 context.kind = kind
 
-        # A drop at a regular station can look like a carrier name ("Fuji
-        # City"), so only enrich targets that are already carriers.
-        known_kind = (
-            context.kind
-            if context is not None
-            else self.store.target_kind(self.cmdr_key, market_id)
-        )
-        if known_kind not in CARRIER_KINDS:
-            return False
-
-        return self.store.update_target(
-            self.cmdr_key, market_id, display_name=name, name=callsign or None, kind=kind
-        )
+        changed = False
+        ids = set(target_ids)
+        if resolved_id:
+            ids.add(resolved_id)
+        for target_market_id in ids:
+            if self.store.target_kind(self.cmdr_key, target_market_id) not in CARRIER_KINDS:
+                continue
+            changed |= self.store.update_target(
+                self.cmdr_key,
+                target_market_id,
+                display_name=name,
+                name=resolved_callsign or None,
+                kind=kind,
+            )
+        return changed
 
     # -- deliveries ------------------------------------------------------
 
