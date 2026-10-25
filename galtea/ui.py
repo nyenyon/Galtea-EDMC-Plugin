@@ -284,7 +284,7 @@ class PluginUI:
         header.columnconfigure(0, weight=1)
         self.details_total = tk.Label(header, text="Total: 0 t", font="TkHeadingFont")
         self.details_total.grid(row=0, column=0, sticky="w")
-        tk.Button(header, text="Reset all", command=self._reset_all).grid(
+        tk.Button(header, text="Remove all", command=self._reset_all).grid(
             row=0, column=1, sticky="e"
         )
 
@@ -292,12 +292,12 @@ class PluginUI:
         targets_box, self.target_rows, self.target_wheel = _scroll_area(outer, 220)
         targets_box.grid(row=2, column=0, sticky="nsew")
 
-        tk.Label(outer, text="History (reported and deleted entries)").grid(
+        tk.Label(outer, text="History (reported and removed entries)").grid(
             row=3, column=0, sticky="w", pady=(14, 2)
         )
         tk.Label(
             outer,
-            text="Reported or deleted entries stay here so they can be restored.",
+            text="Reported or removed entries stay here so they can be restored.",
         ).grid(row=4, column=0, sticky="w")
         history_box, self.history_rows, self.history_wheel = _scroll_area(outer, 160)
         history_box.grid(row=5, column=0, sticky="nsew")
@@ -362,7 +362,7 @@ class PluginUI:
             ).grid(row=0, column=3, sticky="e", padx=(0, 4))
             tk.Button(
                 row,
-                text="Reset",
+                text="Remove",
                 width=6,
                 command=lambda tid=target.id: self._reset_target(tid),
             ).grid(row=0, column=4, sticky="e")
@@ -555,7 +555,7 @@ class PluginUI:
             return
         parent = self.details if self.details is not None else self.panel
         if not messagebox.askyesno(
-            "Reset all entries",
+            "Remove all entries",
             "Move every tracked target to the history?\n\nThe tonnage is not lost: "
             "each entry can be restored from the history.",
             parent=parent,
@@ -607,7 +607,7 @@ class PluginUI:
         )
         hint.grid(row=4, column=0, sticky="w", pady=(0, 8))
 
-        nb.Button(frame, text="Reset all tracked entries\u2026", command=self._reset_all).grid(
+        nb.Button(frame, text="Remove all tracked entries\u2026", command=self._reset_all).grid(
             row=5, column=0, sticky="w"
         )
 

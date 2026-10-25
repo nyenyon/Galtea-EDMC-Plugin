@@ -21,6 +21,9 @@ Versions match `VERSION` in `load.py`.
 
 ### Changed
 
+- The target buttons are now labelled **Remove** and **Remove all** (and
+  **Remove all tracked entries…** in the settings) instead of **Reset** and
+  **Reset all**; entries still move to the history and can be restored.
 - Every target now has a unique batch ID. Reporting the same carrier again
   creates a separate history entry, and restoring a reported batch keeps it
   separate from a newer batch instead of merging the tonnage. Existing data
