@@ -449,14 +449,16 @@ class HaulStore:
         self.save()
         return True
 
-    def reset_all(self, cmdr_key: str, when: str = "") -> int:
+    def reset_all(
+        self, cmdr_key: str, when: str = "", reason: str = "reset_all"
+    ) -> int:
         """Delete every target of a commander, archiving each one."""
         record = self._cmdr(cmdr_key)
         moment = when or now_iso()
         removed = 0
         for key in list(record["targets"].keys()):
             target = record["targets"].pop(key)
-            self._archive(record, target, moment, "reset_all")
+            self._archive(record, target, moment, reason)
             removed += 1
         if removed:
             self.save()

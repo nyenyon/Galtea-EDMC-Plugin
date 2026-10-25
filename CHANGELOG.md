@@ -27,7 +27,8 @@ Versions match `VERSION` in `load.py`.
 - Pressing **Reported** without pressing **Copy** first asks for confirmation,
   preventing accidental finishing.
 - **Finish haul** offers **Yes** (mark as reported), **No, do it anyway**
-  (finish without the reported flag) and **Cancel**.
+  (finish without the reported flag) and **Cancel**. **Finish all hauls** uses
+  the same choice for every active haul.
 
 ### Changed
 

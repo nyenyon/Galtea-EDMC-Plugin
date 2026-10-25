@@ -162,6 +162,18 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(HaulStore(self.path).history("F123"), [])
         self.assertEqual(self.store.clear_history("F123"), 0)
 
+    def test_reset_all_can_mark_all_reported(self) -> None:
+        self.add_carrier()
+        self.add_depot()
+
+        self.assertEqual(self.store.reset_all("F123", reason="reported"), 2)
+        self.assertTrue(
+            all(
+                entry["reason"] == "reported"
+                for entry in self.store.history("F123")
+            )
+        )
+
     def test_reset_all_archives_everything(self) -> None:
         self.add_carrier()
         self.add_depot()

@@ -793,20 +793,11 @@ class PluginUI:
         self._show_modal(window, owner, cancel)
         return result
 
-    def _ask_finish_haul(self, label: str = "") -> Optional[str]:
-        """Ask whether a haul was reported; return reported, unreported or None."""
-        question = (
-            f'Has the haul "{label}" already been reported?'
-            if label
-            else "Has this haul already been reported?"
-        )
-        window, owner, frame = self._make_modal(
-            "Finish haul",
-            question,
-            "Yes marks it as reported.\n"
-            "No, do it anyway finishes it without the reported flag.\n"
-            "Cancel keeps it in Active hauls.",
-        )
+    def _ask_finish_choice(
+        self, title: str, question: str, detail: str
+    ) -> Optional[str]:
+        """Ask whether hauls were reported; return reported, unreported or None."""
+        window, owner, frame = self._make_modal(title, question, detail)
         result: Optional[str] = None
 
         def close(decision: Optional[str]) -> None:
@@ -834,6 +825,21 @@ class PluginUI:
         self._show_modal(window, owner, cancel)
         return result
 
+    def _ask_finish_haul(self, label: str = "") -> Optional[str]:
+        """Ask whether one haul was reported."""
+        question = (
+            f'Has the haul "{label}" already been reported?'
+            if label
+            else "Has this haul already been reported?"
+        )
+        return self._ask_finish_choice(
+            "Finish haul",
+            question,
+            "Yes marks it as reported.\n"
+            "No, do it anyway finishes it without the reported flag.\n"
+            "Cancel keeps it in Active hauls.",
+        )
+
     def _reset_target(self, target_id: str, label: str = "") -> None:
         if not self.cmdr_key:
             return
@@ -845,16 +851,19 @@ class PluginUI:
             self.refresh()
 
     def _reset_all(self) -> None:
-        if not self.cmdr_key:
+        if not self.cmdr_key or not self._targets():
             return
-        if not self._confirm(
+        decision = self._ask_finish_choice(
             "Finish all hauls",
-            "Move every active haul to Finished hauls?",
-            "The tonnage is not lost: each entry can be restored from Finished hauls.",
-            "Finish all",
-        ):
+            "Have all active hauls already been reported?",
+            "Yes marks them all as reported.\n"
+            "No, do it anyway finishes them without the reported flag.\n"
+            "Cancel keeps them in Active hauls.",
+        )
+        if decision is None:
             return
-        if self.store.reset_all(self.cmdr_key, now_iso()):
+        reason = "reported" if decision == "reported" else "unreported"
+        if self.store.reset_all(self.cmdr_key, now_iso(), reason=reason):
             self.refresh()
 
     def _restore(self, history_id: Optional[str]) -> None:
