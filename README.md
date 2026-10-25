@@ -9,7 +9,7 @@ An [EDMarketConnector](https://github.com/EDCD/EDMarketConnector) plugin built f
 
 ## Project Galtea
 
-[Project Galtea](https://projectgaltea.org) is a community-driven Elite Dangerous colonisation initiative building a resupply bridge into the Arcadian Stream. This plugin keeps each commander's hauling totals for the project and turns every target into the `/addscore` command used to report contributions on the Galtea Discord/Sicord.
+[Project Galtea](https://projectgaltea.org) is a community-driven Elite Dangerous colonisation initiative building a resupply bridge into the Arcadian Stream to establish a thriving frontier. This plugin keeps each commander's hauling totals for the project and turns every target into the `/addscore` command used to report contributions on the Galtea Discord/Sicord.
 
 ## What it tracks
 
