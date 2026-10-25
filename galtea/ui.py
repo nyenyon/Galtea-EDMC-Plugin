@@ -313,7 +313,7 @@ class PluginUI:
         tabs = tk.Frame(outer)
         tabs.grid(row=1, column=0, sticky="ew", pady=(12, 0))
         self.tab_targets, self.tab_targets_bar = self._build_details_tab(
-            tabs, "Targets", "targets"
+            tabs, "Active hauls", "targets"
         )
         self.tab_history, self.tab_history_bar = self._build_details_tab(
             tabs, "History (0)", "history"
@@ -388,7 +388,7 @@ class PluginUI:
         history = len(self._history())
         if self.tab_targets is not None:
             try:
-                self.tab_targets.configure(text=f"Targets ({targets})")
+                self.tab_targets.configure(text=f"Active hauls ({targets})")
             except tk.TclError:
                 pass
         if self.tab_history is not None:

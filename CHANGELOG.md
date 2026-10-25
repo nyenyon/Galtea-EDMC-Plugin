@@ -19,7 +19,7 @@ Versions match `VERSION` in `load.py`.
 - The report window shows a reminder to set your own Discord handle while the
   placeholder `@yourdiscordname` is still in use.
 - The plugin settings tab shows the version and links to the GitHub repository.
-- The **Targets** tab shows the number of active entries in its label.
+- The **Active hauls** tab shows the number of active entries in its label.
 - History entries have a **Delete** button that permanently removes the entry
   after a confirmation. **Delete all** on the History tab clears the whole
   history, also after a confirmation.
@@ -28,14 +28,14 @@ Versions match `VERSION` in `load.py`.
 
 ### Changed
 
-- The details window now has **Targets** and **History** tabs. The history is
+- The details window now has **Active hauls** and **History** tabs. The history is
   only shown when selected, and its tab label shows the number of entries.
 - The target button is now labelled **Archive** (and **Archive all tracked
   entries…** in the settings) instead of **Reset**; entries still move to the
   history and can be restored.
 - The details header action follows the active tab: **Archive all** on
-  Targets (moves every active target to the history) and **Delete all** on
-  History (permanently clears the history).
+  Active hauls (moves every active target to the history) and **Delete all**
+  on History (permanently clears the history).
 - Every target now has a unique batch ID. Reporting the same carrier again
   creates a separate history entry, and restoring a reported batch keeps it
   separate from a newer batch instead of merging the tonnage. Existing data
