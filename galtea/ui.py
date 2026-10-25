@@ -723,15 +723,13 @@ class PluginUI:
         if not messagebox.askyesno(
             "Finish haul",
             f"{question}\n\n"
-            "Yes moves it to Finished hauls and marks it as reported.\n"
+            "Yes moves it to Finished hauls.\n"
             "No keeps it in Active hauls.",
             parent=parent,
             default="no",
         ):
             return
-        if self.store.reset_target(
-            self.cmdr_key, target_id, now_iso(), reason="reported"
-        ):
+        if self.store.reset_target(self.cmdr_key, target_id, now_iso()):
             self.refresh()
 
     def _reset_all(self) -> None:

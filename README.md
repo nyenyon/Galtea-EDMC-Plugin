@@ -36,7 +36,7 @@ Total: 3,940 t
 [ Details ]
 ```
 
-The details window has **Active hauls (N)** and **Finished hauls (N)** tabs, both showing their entry count. **Active hauls** is shown first and lists every target with its own **Report** and **Finish haul** buttons. **Finish haul** asks whether the haul was already reported; **Yes** moves it to **Finished hauls** and marks it as reported, **No** keeps it active. The header action on this tab is **Finish all hauls**. The **Finished hauls** tab lists name, type, tonnage, whether the entry was reported, and the finish time, with **Restore** and **Delete** buttons for each entry. Its header action is **Delete all**, which clears the whole list. All delete actions are permanent and ask for confirmation first.
+The details window has **Active hauls (N)** and **Finished hauls (N)** tabs, both showing their entry count. **Active hauls** is shown first and lists every target with its own **Report** and **Finish haul** buttons. **Finish haul** asks whether the haul was already reported; **Yes** moves it to **Finished hauls**, **No** keeps it active. The header action on this tab is **Finish all hauls**. The **Finished hauls** tab lists name, type, tonnage, whether the entry was reported, and the finish time, with **Restore** and **Delete** buttons for each entry. Its header action is **Delete all**, which clears the whole list. All delete actions are permanent and ask for confirmation first.
 
 **Report** shows the Project Galtea Discord/Sicord macro for that target in a copyable field:
 
