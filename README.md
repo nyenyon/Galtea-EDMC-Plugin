@@ -11,23 +11,23 @@
 
 An [EDMarketConnector](https://github.com/EDCD/EDMarketConnector) plugin built for [Project Galtea](https://projectgaltea.org), the community-driven colonisation effort in Elite Dangerous. It counts the tonnage you sell at **fleet carriers** and **squadron carriers**, and the commodities you deliver to **construction sites** (space and planetary), with running totals per target, and prepares the prefilled `/addscore` command for the project's Discord/Sicord.
 
+## Project Galtea
+
+[Project Galtea](https://projectgaltea.org) is a community-driven Elite Dangerous colonisation initiative building a resupply bridge into the Arcadian Stream to establish a thriving frontier. This plugin keeps each commander's hauling totals for the project and prepares the report command for its Discord/Sicord.
+
 ## What it is for
 
 Hauling for Project Galtea involves two recurring tasks: keeping track of how much you have delivered, and reporting that tonnage in Discord.
 
 - **Count deliveries automatically.** The plugin follows EDMC's journal while you play. Sales at fleet and squadron carriers and contributions to construction sites are added to the matching target, with a running total per carrier or site and per commander. There is no manual adding up of cargo, and the totals survive EDMC restarts.
-- **Prepare the Discord report.** When a batch is ready, the target's **Report** window contains the finished `/addscore` command with your handle, the current tonnage and the target label:
+- **Prepare the Discord report.** When a batch is ready, the target's **Report** window contains the finished `/addscore` command with your handle, the current tonnage and the target label, e.g.:
 
   ```
-  /addscore user:@yourdiscordname points:2372 comment:[PJGT]PANDA BEAR (B6W-34K)
+  /addscore user:@nyenyon points:2372 comment:[PJGT]PANDA BEAR (B6W-34K)
   ```
 
   **Copy** puts it on the clipboard; paste it into the Galtea Discord/Sicord and press **Reported** in the plugin. This avoids typos in the handle, tonnage or carrier name and keeps the report consistent with the tracker.
 - **Nothing is posted automatically.** The plugin only prepares the command; you decide when and where to send it.
-
-## Project Galtea
-
-[Project Galtea](https://projectgaltea.org) is a community-driven Elite Dangerous colonisation initiative building a resupply bridge into the Arcadian Stream to establish a thriving frontier. This plugin keeps each commander's hauling totals for the project and prepares the report command for its Discord/Sicord.
 
 ## What it tracks
 
