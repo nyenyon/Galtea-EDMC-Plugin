@@ -539,7 +539,7 @@ class PluginUI:
         frame.columnconfigure(0, weight=1)
 
         nb.Label(frame, text="Galtea Haul Tracker").grid(row=0, column=0, sticky="w")
-        nb.Label(
+        description = nb.Label(
             frame,
             text=(
                 "Tracks tonnage sold to fleet carriers and squadron carriers, and "
@@ -547,41 +547,68 @@ class PluginUI:
                 f"Data file: {self.store.path}"
             ),
             justify="left",
-        ).grid(row=1, column=0, sticky="w", pady=(4, 8))
+            wraplength=420,
+        )
+        description.grid(row=1, column=0, sticky="w", pady=(4, 8))
 
         nb.Label(frame, text="Discord user for the Report command").grid(
             row=2, column=0, sticky="w"
         )
         self.discord_user_var = tk.StringVar(master=frame, value=self.discord_user())
-        ttk.Entry(frame, textvariable=self.discord_user_var, width=32).grid(
-            row=3, column=0, sticky="w", pady=(2, 2)
+        ttk.Entry(frame, textvariable=self.discord_user_var, width=1).grid(
+            row=3, column=0, sticky="ew", pady=(2, 2)
         )
-        nb.Label(
+        hint = nb.Label(
             frame,
             text=(
                 f"Used as user:@name in the /addscore command "
                 f"(default: {DEFAULT_DISCORD_USER})."
             ),
             justify="left",
-        ).grid(row=4, column=0, sticky="w", pady=(0, 8))
+            wraplength=420,
+        )
+        hint.grid(row=4, column=0, sticky="w", pady=(0, 8))
 
         nb.Button(frame, text="Reset all tracked entries\u2026", command=self._reset_all).grid(
             row=5, column=0, sticky="w"
         )
 
-        # Let the footer sit at the bottom of the page, below the controls.
-        # EDMC does not theme the plugin prefs tab, so use its default colours
-        # (nb widgets) and do not register these labels with theme.update().
+        # Footer: version and repository link, left aligned and kept at the
+        # bottom of the page.  EDMC does not theme the plugin prefs tab, so use
+        # nb widgets (their default colours) instead of theme.update().
         frame.rowconfigure(6, weight=1)
-        nb.Label(frame, text=f"Version {self.version or 'unknown'}").grid(
-            row=7, column=0, sticky="w", pady=(12, 0)
-        )
+        footer = tk.Frame(frame)
+        footer.grid(row=7, column=0, sticky="w", pady=(12, 0))
+        version_label = nb.Label(footer, text=f"Version {self.version or 'unknown'}")
+        version_label.pack(side="left")
+        background = version_label.cget("background")
+        if background:
+            footer.configure(background=background)
         if self.link_font is None:
             self.link_font = tkfont.nametofont("TkDefaultFont").copy()
             self.link_font.configure(underline=True)
-        link = nb.Label(frame, text=GITHUB_URL, cursor="hand2", font=self.link_font)
-        link.grid(row=7, column=1, sticky="w", padx=(8, 0), pady=(12, 0))
+        link = nb.Label(
+            footer, text=GITHUB_URL, cursor="hand2", font=self.link_font, wraplength=420
+        )
+        link.pack(side="left", padx=(8, 0))
         link.bind("<Button-1>", lambda _event: _open_url(GITHUB_URL))
+
+        def fit_width(event: tk.Event) -> None:
+            """Keep the long labels inside the page when the dialog is resized."""
+            width = max(int(event.width) - 4, 200)
+            for label in (description, hint):
+                try:
+                    label.configure(wraplength=width)
+                except tk.TclError:
+                    pass
+            try:
+                link.configure(
+                    wraplength=max(width - version_label.winfo_reqwidth() - 12, 80)
+                )
+            except tk.TclError:
+                pass
+
+        frame.bind("<Configure>", fit_width, add="+")
         return frame
 
     def save_prefs(self) -> None:
