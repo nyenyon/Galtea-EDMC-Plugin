@@ -12,7 +12,7 @@ Versions match `VERSION` in `load.py`.
 - **Reported** button in the "Report delivery" window: once the tonnage has
   been reported, it removes the target from the running totals and moves it to
   **Finished hauls**, where it can be restored.
-- The **Finished hauls** tab shows whether an entry was archived with
+- The **Finished hauls** tab shows whether an entry was finished with
   **Reported**.
 - If restoring a report leaves several active batches for the same carrier,
   the details window and the report window show each batch's short ID so they
@@ -25,17 +25,17 @@ Versions match `VERSION` in `load.py`.
   removes the entry after a confirmation. **Delete all** on that tab clears the
   whole list, also after a confirmation.
 - Pressing **Reported** without pressing **Copy** first asks for confirmation,
-  preventing accidental archiving.
+  preventing accidental finishing.
 
 ### Changed
 
 - The details window now has **Active hauls** and **Finished hauls** tabs. The
   finished list is only shown when its tab is selected, and the tab label shows
   the number of entries.
-- The target button is now labelled **Archive** (and **Archive all tracked
-  entries…** in the settings) instead of **Reset**; entries still move to
-  **Finished hauls** and can be restored.
-- The details header action follows the active tab: **Archive all** on
+- The target button is now labelled **Finish haul** (and **Finish all hauls…**
+  in the settings) instead of **Reset**; entries still move to **Finished
+  hauls** and can be restored.
+- The details header action follows the active tab: **Finish all hauls** on
   **Active hauls** (moves every active target to **Finished hauls**) and
   **Delete all** on **Finished hauls** (permanently clears the list).
 - Every target now has a unique batch ID. Reporting the same carrier again

@@ -36,7 +36,7 @@ Total: 3,940 t
 [ Details ]
 ```
 
-The details window has **Active hauls (N)** and **Finished hauls (N)** tabs, both showing their entry count. **Active hauls** is shown first and lists every target with its own **Report** and **Archive** buttons; the header action on this tab is **Archive all**. The **Finished hauls** tab lists name, type, tonnage, whether the entry was reported, and the archival time, with **Restore** and **Delete** buttons for each entry. Its header action is **Delete all**, which clears the whole list. All delete actions are permanent and ask for confirmation first.
+The details window has **Active hauls (N)** and **Finished hauls (N)** tabs, both showing their entry count. **Active hauls** is shown first and lists every target with its own **Report** and **Finish haul** buttons; the header action on this tab is **Finish all hauls**. The **Finished hauls** tab lists name, type, tonnage, whether the entry was reported, and the finish time, with **Restore** and **Delete** buttons for each entry. Its header action is **Delete all**, which clears the whole list. All delete actions are permanent and ask for confirmation first.
 
 **Report** shows the Project Galtea Discord/Sicord macro for that target in a copyable field:
 
@@ -46,11 +46,11 @@ The details window has **Active hauls (N)** and **Finished hauls (N)** tabs, bot
 
 `comment:` is the target as shown in the list: the carrier name with its callsign, or the construction site being built. The Discord handle is configurable in the plugin preferences; the default is the placeholder `@yourdiscordname`, so no real user is credited by accident. The configured handle is stored in EDMC's configuration and persists across restarts. While the placeholder is still in use, the report window shows a reminder to change it in the plugin preferences.
 
-Once the tonnage has been reported, the **Reported** button in the same window archives the target: it disappears from the running totals and moves to **Finished hauls**, just like **Archive**. It can be restored from there if needed. If **Copy** was not pressed first, a confirmation asks whether the delivery was really reported.
+Once the tonnage has been reported, the **Reported** button in the same window finishes the target: it disappears from the running totals and moves to **Finished hauls**, just like **Finish haul**. It can be restored from there if needed. If **Copy** was not pressed first, a confirmation asks whether the delivery was really reported.
 
 Every report is stored as its own batch with a unique ID. Reporting the same carrier again later creates a separate entry in **Finished hauls**. If you restore an older batch while the same carrier already has a newer one, both stay separate and new deliveries go to the newest batch. In that case the details window and the report window show the short batch IDs so you can tell the entries apart.
 
-Archiving an entry always moves it to **Finished hauls** instead of discarding it, so an accidental removal can be undone. The **Finished hauls** tab keeps the last 200 entries. Deleting an entry from **Finished hauls**, or using **Delete all**, is permanent and cannot be undone; both actions ask for confirmation first.
+Using **Finish haul** always moves the entry to **Finished hauls** instead of discarding it, so an accidental removal can be undone. The **Finished hauls** tab keeps the last 200 entries. Deleting an entry from **Finished hauls**, or using **Delete all**, is permanent and cannot be undone; both actions ask for confirmation first.
 
 ## Install
 
@@ -67,7 +67,7 @@ The plugin needs no third-party packages and makes no network requests.
 The plugin adds a **Galtea Haul Tracker** tab to EDMC's settings:
 
 - **Discord user for the Report command** – the Project Galtea Discord handle used as `user:@name` in the `/addscore` command. The default is the placeholder `@yourdiscordname`; set your own handle before reporting. It is stored in EDMC's configuration and survives restarts.
-- **Archive all tracked entries…** – archives every active target in **Finished hauls**.
+- **Finish all hauls…** – moves every active haul to **Finished hauls**.
 - The footer shows the plugin version and links to the GitHub repository.
 
 ## Data file

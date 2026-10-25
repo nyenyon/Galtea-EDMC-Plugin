@@ -306,7 +306,7 @@ class PluginUI:
         self.details_total = tk.Label(header, text="Total: 0 t", font="TkHeadingFont")
         self.details_total.grid(row=0, column=0, sticky="w")
         self.details_bulk = tk.Button(
-            header, text="Archive all", command=self._reset_all
+            header, text="Finish all hauls", command=self._reset_all
         )
         self.details_bulk.grid(row=0, column=1, sticky="e")
 
@@ -402,7 +402,7 @@ class PluginUI:
                     )
                 else:
                     self.details_bulk.configure(
-                        text="Archive all",
+                        text="Finish all hauls",
                         command=self._reset_all,
                         state=tk.NORMAL if targets else tk.DISABLED,
                     )
@@ -497,8 +497,8 @@ class PluginUI:
             ).grid(row=0, column=3, sticky="e", padx=(0, 4))
             tk.Button(
                 row,
-                text="Archive",
-                width=7,
+                text="Finish haul",
+                width=11,
                 command=lambda tid=target.id: self._reset_target(tid),
             ).grid(row=0, column=4, sticky="e")
 
@@ -657,7 +657,7 @@ class PluginUI:
         entry.select_range(0, "end")
 
     def _mark_reported(self, target: Target) -> None:
-        """Archive a target after its tonnage has been reported."""
+        """Finish a target after its tonnage has been reported."""
         if not self.cmdr_key:
             return
         if not self.report_copied:
@@ -667,7 +667,7 @@ class PluginUI:
             if not messagebox.askyesno(
                 "Confirm reported",
                 "The command was not copied. Was this delivery really reported?\n\n"
-                "Archiving removes it from the active targets.",
+                "Finishing it removes the haul from the active list.",
                 parent=parent,
                 default="no",
             ):
@@ -720,9 +720,9 @@ class PluginUI:
             return
         parent = self.details if self.details is not None else self.panel
         if not messagebox.askyesno(
-            "Archive all entries",
-            "Move every tracked target to the history?\n\nThe tonnage is not lost: "
-            "each entry can be restored from the history.",
+            "Finish all hauls",
+            "Move every active haul to Finished hauls?\n\nThe tonnage is not lost: "
+            "each entry can be restored from Finished hauls.",
             parent=parent,
         ):
             return
@@ -806,7 +806,7 @@ class PluginUI:
         )
         hint.grid(row=4, column=0, sticky="w", pady=(0, 8))
 
-        nb.Button(frame, text="Archive all tracked entries\u2026", command=self._reset_all).grid(
+        nb.Button(frame, text="Finish all hauls\u2026", command=self._reset_all).grid(
             row=5, column=0, sticky="w"
         )
 
