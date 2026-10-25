@@ -171,7 +171,7 @@ class PluginUI:
 
         self.details: Optional[tk.Toplevel] = None
         self.details_total: Optional[tk.Label] = None
-        self.details_history_delete: Optional[tk.Button] = None
+        self.details_bulk: Optional[tk.Button] = None
         self.details_view = "targets"
         self.details_content: Optional[tk.Frame] = None
         self.targets_view: Optional[tk.Frame] = None
@@ -304,10 +304,10 @@ class PluginUI:
         header.columnconfigure(0, weight=1)
         self.details_total = tk.Label(header, text="Total: 0 t", font="TkHeadingFont")
         self.details_total.grid(row=0, column=0, sticky="w")
-        self.details_history_delete = tk.Button(
-            header, text="Delete all", command=self._delete_all_history
+        self.details_bulk = tk.Button(
+            header, text="Archive all", command=self._reset_all
         )
-        self.details_history_delete.grid(row=0, column=1, sticky="e")
+        self.details_bulk.grid(row=0, column=1, sticky="e")
 
         tabs = tk.Frame(outer)
         tabs.grid(row=1, column=0, sticky="ew", pady=(12, 0))
@@ -395,15 +395,20 @@ class PluginUI:
                 self.tab_history.configure(text=f"History ({history})")
             except tk.TclError:
                 pass
-        if self.details_history_delete is not None:
+        if self.details_bulk is not None:
             try:
-                self.details_history_delete.configure(
-                    state=tk.NORMAL if history else tk.DISABLED
-                )
                 if self.details_view == "history":
-                    self.details_history_delete.grid()
+                    self.details_bulk.configure(
+                        text="Delete all",
+                        command=self._delete_all_history,
+                        state=tk.NORMAL if history else tk.DISABLED,
+                    )
                 else:
-                    self.details_history_delete.grid_remove()
+                    self.details_bulk.configure(
+                        text="Archive all",
+                        command=self._reset_all,
+                        state=tk.NORMAL if targets else tk.DISABLED,
+                    )
             except tk.TclError:
                 pass
 
@@ -437,7 +442,7 @@ class PluginUI:
             except tk.TclError:
                 pass
         self.details = None
-        self.details_history_delete = None
+        self.details_bulk = None
         self.details_content = None
         self.targets_view = None
         self.history_view = None

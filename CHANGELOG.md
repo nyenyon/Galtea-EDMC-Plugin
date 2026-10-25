@@ -31,10 +31,9 @@ Versions match `VERSION` in `load.py`.
 - The target button is now labelled **Archive** (and **Archive all tracked
   entries…** in the settings) instead of **Reset**; entries still move to the
   history and can be restored.
-- The details header no longer offers bulk archiving. On the History tab it
-  shows **Delete all**, which permanently clears the history. Use the
-  per-target **Archive** button or the settings action to archive active
-  targets.
+- The details header action follows the active tab: **Archive all** on
+  Targets (moves every active target to the history) and **Delete all** on
+  History (permanently clears the history).
 - Every target now has a unique batch ID. Reporting the same carrier again
   creates a separate history entry, and restoring a reported batch keeps it
   separate from a newer batch instead of merging the tonnage. Existing data

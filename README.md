@@ -36,7 +36,7 @@ Total: 3,940 t
 [ Details ]
 ```
 
-The details window has **Targets (N)** and **History (N)** tabs, both showing their entry count. **Targets** is shown first and lists every target with its own **Report** and **Archive** buttons. The **History** tab lists name, type, tonnage, whether the entry was reported, and the archival time, with **Restore** and **Delete** buttons for each entry. **Delete** removes an entry permanently after a confirmation; **Delete all** (shown on the History tab) clears the whole history, also after a confirmation.
+The details window has **Targets (N)** and **History (N)** tabs, both showing their entry count. **Targets** is shown first and lists every target with its own **Report** and **Archive** buttons; the header action on this tab is **Archive all**. The **History** tab lists name, type, tonnage, whether the entry was reported, and the archival time, with **Restore** and **Delete** buttons for each entry. Its header action is **Delete all**, which clears the whole history. All delete actions are permanent and ask for confirmation first.
 
 **Report** shows the Project Galtea Discord/Sicord macro for that target in a copyable field:
 
