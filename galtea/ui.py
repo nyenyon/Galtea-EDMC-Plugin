@@ -776,7 +776,10 @@ class PluginUI:
             (owner.winfo_height() - window.winfo_reqheight()) // 2, 0
         )
         window.geometry(f"+{x}+{y}")
-        window.wait_visibility()
+        try:
+            window.wait_visibility()
+        except tk.TclError:
+            pass
         cancel.focus_set()
         try:
             window.grab_set()
