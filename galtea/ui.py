@@ -166,6 +166,12 @@ class PluginUI:
 
         self.details: Optional[tk.Toplevel] = None
         self.details_total: Optional[tk.Label] = None
+        self.details_view = "targets"
+        self.details_content: Optional[tk.Frame] = None
+        self.targets_view: Optional[tk.Frame] = None
+        self.history_view: Optional[tk.Frame] = None
+        self.tab_targets: Optional[tk.Button] = None
+        self.tab_history: Optional[tk.Button] = None
         self.target_rows: Optional[tk.Frame] = None
         self.history_rows: Optional[tk.Frame] = None
         self.target_wheel: Any = None
@@ -272,6 +278,7 @@ class PluginUI:
             self.details.lift()
             return
 
+        self.details_view = "targets"
         window = tk.Toplevel(self.parent)
         window.title("Galtea Haul Tracker")
         window.geometry("680x600")
@@ -283,7 +290,6 @@ class PluginUI:
         outer.pack(fill="both", expand=True)
         outer.columnconfigure(0, weight=1)
         outer.rowconfigure(2, weight=1)
-        outer.rowconfigure(5, weight=1)
 
         header = tk.Frame(outer)
         header.grid(row=0, column=0, sticky="ew")
@@ -294,22 +300,75 @@ class PluginUI:
             row=0, column=1, sticky="e"
         )
 
-        tk.Label(outer, text="Targets").grid(row=1, column=0, sticky="w", pady=(12, 2))
-        targets_box, self.target_rows, self.target_wheel = _scroll_area(outer, 220)
-        targets_box.grid(row=2, column=0, sticky="nsew")
-
-        tk.Label(outer, text="History (reported and archived entries)").grid(
-            row=3, column=0, sticky="w", pady=(14, 2)
+        tabs = tk.Frame(outer)
+        tabs.grid(row=1, column=0, sticky="w", pady=(12, 6))
+        self.tab_targets = tk.Button(
+            tabs, text="Targets", command=lambda: self._show_details_view("targets")
         )
-        tk.Label(
-            outer,
-            text="Reported or archived entries stay here so they can be restored.",
-        ).grid(row=4, column=0, sticky="w")
-        history_box, self.history_rows, self.history_wheel = _scroll_area(outer, 160)
-        history_box.grid(row=5, column=0, sticky="nsew")
+        self.tab_targets.pack(side="left")
+        self.tab_history = tk.Button(
+            tabs, text="History (0)", command=lambda: self._show_details_view("history")
+        )
+        self.tab_history.pack(side="left", padx=(4, 0))
 
-        self._refresh_details()
+        self.details_content = tk.Frame(outer)
+        self.details_content.grid(row=2, column=0, sticky="nsew")
+        self.details_content.columnconfigure(0, weight=1)
+        self.details_content.rowconfigure(0, weight=1)
+
+        self.targets_view = tk.Frame(self.details_content)
+        self.targets_view.grid(row=0, column=0, sticky="nsew")
+        self.targets_view.columnconfigure(0, weight=1)
+        self.targets_view.rowconfigure(0, weight=1)
+        targets_box, self.target_rows, self.target_wheel = _scroll_area(
+            self.targets_view, 300
+        )
+        targets_box.grid(row=0, column=0, sticky="nsew")
+
+        self.history_view = tk.Frame(self.details_content)
+        self.history_view.grid(row=0, column=0, sticky="nsew")
+        self.history_view.columnconfigure(0, weight=1)
+        self.history_view.rowconfigure(1, weight=1)
+        tk.Label(
+            self.history_view,
+            text="Reported or archived entries stay here so they can be restored.",
+        ).grid(row=0, column=0, sticky="w", pady=(0, 6))
+        history_box, self.history_rows, self.history_wheel = _scroll_area(
+            self.history_view, 300
+        )
+        history_box.grid(row=1, column=0, sticky="nsew")
+
+        self._show_details_view("targets")
         _apply_theme(window)
+
+    def _show_details_view(self, view: str) -> None:
+        """Switch between the targets and history tabs."""
+        self.details_view = "history" if view == "history" else "targets"
+        if self.targets_view is not None and self.history_view is not None:
+            if self.details_view == "targets":
+                self.history_view.grid_remove()
+                self.targets_view.grid()
+            else:
+                self.targets_view.grid_remove()
+                self.history_view.grid()
+        self._refresh_details()
+
+    def _update_details_tabs(self) -> None:
+        if self.tab_targets is not None:
+            try:
+                self.tab_targets.configure(
+                    relief="sunken" if self.details_view == "targets" else "raised"
+                )
+            except tk.TclError:
+                pass
+        if self.tab_history is not None:
+            try:
+                self.tab_history.configure(
+                    text=f"History ({len(self._history())})",
+                    relief="sunken" if self.details_view == "history" else "raised",
+                )
+            except tk.TclError:
+                pass
 
     def close_details(self) -> None:
         self._close_report()
@@ -319,6 +378,11 @@ class PluginUI:
             except tk.TclError:
                 pass
         self.details = None
+        self.details_content = None
+        self.targets_view = None
+        self.history_view = None
+        self.tab_targets = None
+        self.tab_history = None
         self._history_sig = None
 
     def _refresh_details(self) -> None:
@@ -326,6 +390,7 @@ class PluginUI:
             return
         self._refresh_target_rows()
         self._refresh_history_rows()
+        self._update_details_tabs()
 
     def _refresh_target_rows(self) -> None:
         if self.target_rows is None or self.details_total is None:
@@ -397,7 +462,7 @@ class PluginUI:
 
         _clear(self.history_rows)
         if not history:
-            tk.Label(self.history_rows, text="Nothing deleted yet.").pack(anchor="w", pady=6)
+            tk.Label(self.history_rows, text="Nothing archived yet.").pack(anchor="w", pady=6)
             _bind_wheel(self.history_rows, self.history_wheel)
             _apply_theme(self.history_rows)
             return

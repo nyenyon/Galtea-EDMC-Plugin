@@ -32,7 +32,7 @@ Total: 3,940 t
 [ Details ]
 ```
 
-The details window lists every target with its own **Report** and **Archive** buttons, an **Archive all** button, and a **History** section containing every archived entry with a **Restore** button. The history shows name, type, tonnage, whether the entry was reported, and the archival time.
+The details window has **Targets** and **History** tabs. **Targets** is shown first and lists every target with its own **Report** and **Archive** buttons; **Archive all** sits in the header. The **History** tab shows the number of archived entries in its label and lists name, type, tonnage, whether the entry was reported, and the archival time, with a **Restore** button for each entry.
 
 **Report** shows the Discord/Sicord macro for that target in a copyable field:
 

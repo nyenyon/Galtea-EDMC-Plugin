@@ -22,6 +22,8 @@ Versions match `VERSION` in `load.py`.
 
 ### Changed
 
+- The details window now has **Targets** and **History** tabs. The history is
+  only shown when selected, and its tab label shows the number of entries.
 - The target buttons are now labelled **Archive** and **Archive all** (and
   **Archive all tracked entries…** in the settings) instead of **Reset** and
   **Reset all**; entries still move to the history and can be restored.
