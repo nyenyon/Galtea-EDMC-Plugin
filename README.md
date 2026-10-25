@@ -1,5 +1,7 @@
 # Galtea Haul Tracker (EDMC plugin)
 
+**Runs on EDMC for Windows, macOS and Linux.**
+
 > **Note:** This plugin was created entirely with AI agents. Code, tests and
 > documentation were generated and reviewed by them.
 
@@ -56,7 +58,7 @@ Archiving an entry always moves it to the history instead of discarding it, so a
    - Linux: `~/.local/share/EDMarketConnector/plugins/Galtea-Haul-Tracker` (or `$XDG_DATA_HOME/EDMarketConnector/plugins/…`)
 2. Restart EDMC.
 
-The plugin runs on EDMC for Windows, macOS and Linux, needs no third-party packages and makes no network requests.
+The plugin needs no third-party packages and makes no network requests.
 
 ## Settings
 
