@@ -56,7 +56,7 @@ Archiving an entry always moves it to the history instead of discarding it, so a
    - Linux: `~/.local/share/EDMarketConnector/plugins/Galtea-Haul-Tracker` (or `$XDG_DATA_HOME/EDMarketConnector/plugins/…`)
 2. Restart EDMC.
 
-The plugin needs no third-party packages and makes no network requests.
+The plugin runs on EDMC for Windows, macOS and Linux, needs no third-party packages and makes no network requests.
 
 ## Settings
 

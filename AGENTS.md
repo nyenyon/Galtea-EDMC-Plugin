@@ -7,6 +7,15 @@
 - The plugin tracks tonnage sold to fleet/squadron carriers (`MarketSell`) and commodities delivered to construction sites (`ColonisationContribution`). Totals persist in `data/haul_tracker.json` (git-ignored).
 - `README.md` documents behaviour, install steps and the data file.
 
+## Platforms
+
+- The plugin targets EDMC on Linux, Windows and macOS. It uses only the Python standard library and Tk; there are no platform-specific modules, shell commands or path separators.
+- File access goes through `pathlib.Path`. The data file lives inside the plugin folder and is written via `os.replace`; write failures are caught so tracking continues in memory.
+- Mouse-wheel scrolling handles `<MouseWheel>` (Windows/macOS) and `<Button-4/5>` (Linux). macOS reports small deltas, so the handler falls back to one scroll unit when `int(delta / 120)` is zero.
+- Use Tk named fonts (`TkDefaultFont`, `TkHeadingFont`, `TkSmallCaptionFont`) instead of hardcoded families or sizes; EDMC handles UI scaling.
+- Clipboard and external links use tkinter's clipboard and `webbrowser`, never platform commands.
+- The unit tests are platform-independent, but UI changes still need a visual check on all three platforms when possible.
+
 ## Commands
 
 ```sh

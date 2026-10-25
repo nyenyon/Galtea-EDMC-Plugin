@@ -126,7 +126,12 @@ def _scroll_area(parent: tk.Misc, height: int) -> tuple[tk.Frame, tk.Frame, Any]
         elif getattr(event, "num", None) == 5:
             canvas.yview_scroll(1, "units")
         elif getattr(event, "delta", 0):
-            canvas.yview_scroll(int(-event.delta / 120), "units")
+            # Windows reports one wheel notch as 120; macOS trackpads report
+            # much smaller values, so fall back to a single unit.
+            steps = int(-event.delta / 120)
+            if steps == 0:
+                steps = -1 if event.delta > 0 else 1
+            canvas.yview_scroll(steps, "units")
 
     for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
         canvas.bind(sequence, wheel)
