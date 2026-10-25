@@ -340,15 +340,11 @@ class PluginUI:
         self.history_view = tk.Frame(self.details_content)
         self.history_view.grid(row=0, column=0, sticky="nsew")
         self.history_view.columnconfigure(0, weight=1)
-        self.history_view.rowconfigure(1, weight=1)
-        tk.Label(
-            self.history_view,
-            text="Reported or archived entries stay here so they can be restored.",
-        ).grid(row=0, column=0, sticky="w", pady=(0, 6))
+        self.history_view.rowconfigure(0, weight=1)
         history_box, self.history_rows, self.history_wheel = _scroll_area(
             self.history_view, 300
         )
-        history_box.grid(row=1, column=0, sticky="nsew")
+        history_box.grid(row=0, column=0, sticky="nsew")
 
         self._show_details_view("targets")
         _apply_theme(window)
