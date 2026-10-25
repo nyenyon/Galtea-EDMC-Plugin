@@ -20,7 +20,7 @@ An [EDMarketConnector](https://github.com/EDCD/EDMarketConnector) plugin built f
 | Construction site (space / planet / colonisation ship) | `ColonisationContribution` | yes, all delivered commodities |
 | Any other station | `MarketSell` | no |
 
-Only the **summed tonnage** is stored — there is no per-commodity breakdown. Totals accumulate per target and survive EDMC restarts. Commanders on the same machine are tracked separately.
+For each target only the **summed tonnage** is tracked — there is no per-commodity breakdown. Totals accumulate per target and survive EDMC restarts. Commanders on the same machine are tracked separately.
 
 Construction sites never emit `MarketSell` for deliveries, so exactly one event type is used per target — no double counting.
 
@@ -67,7 +67,7 @@ The plugin needs no third-party packages and makes no network requests.
 The plugin adds a **Galtea Haul Tracker** tab to EDMC's settings:
 
 - **Discord user for the Report command** – the Project Galtea Discord handle used as `user:@name` in the `/addscore` command. The default is the placeholder `@yourdiscordname`; set your own handle before reporting. It is stored in EDMC's configuration and survives restarts.
-- **Finish all hauls…** – moves every active haul to **Finished hauls**.
+- **Finish all hauls…** – asks whether the active hauls were reported, then moves them to **Finished hauls** (with or without the Reported flag).
 - The footer shows the plugin version and links to the GitHub repository.
 
 ## Data file
