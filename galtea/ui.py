@@ -267,6 +267,7 @@ class PluginUI:
         for target in targets[:PANEL_ROWS]:
             row = tk.Frame(self.panel_rows)
             row.pack(fill="x")
+            row.columnconfigure(0, weight=1)
             # Fixed columns so widening EDMC does not stretch the numbers.
             tk.Label(row, text=_short(target.label, 24), width=24, anchor="w").grid(
                 row=0, column=0, sticky="w"
