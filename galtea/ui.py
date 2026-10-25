@@ -567,7 +567,7 @@ class PluginUI:
 
             name_label = tk.Label(row, text=_short(target.label, 32), anchor="w")
             name_label.grid(row=0, column=0, sticky="ew")
-            tk.Label(row, text=target.kind_label, width=15, anchor="w").grid(
+            tk.Label(row, text=target.kind_label, width=17, anchor="w").grid(
                 row=0, column=1, sticky="w", padx=(8, 0)
             )
             tk.Label(row, text=f"{format_number(target.tons)} t", width=10, anchor="e").grid(
@@ -637,7 +637,7 @@ class PluginUI:
 
             name_label = tk.Label(row, text=_short(target.label, 24), anchor="w")
             name_label.grid(row=0, column=0, sticky="ew")
-            tk.Label(row, text=target.kind_label, width=15, anchor="w").grid(
+            tk.Label(row, text=target.kind_label, width=17, anchor="w").grid(
                 row=0, column=1, sticky="w", padx=(8, 0)
             )
             tk.Label(row, text=f"{format_number(target.tons)} t", width=10, anchor="e").grid(
