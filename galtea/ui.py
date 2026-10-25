@@ -499,7 +499,9 @@ class PluginUI:
                 row,
                 text="Finish haul",
                 width=11,
-                command=lambda tid=target.id: self._reset_target(tid),
+                command=lambda tid=target.id, label=target.label: self._reset_target(
+                    tid, label
+                ),
             ).grid(row=0, column=4, sticky="e")
 
             # Only ambiguous when a restored batch runs next to a newer one.
@@ -709,10 +711,27 @@ class PluginUI:
 
     # -- actions ---------------------------------------------------------
 
-    def _reset_target(self, target_id: str) -> None:
+    def _reset_target(self, target_id: str, label: str = "") -> None:
         if not self.cmdr_key:
             return
-        if self.store.reset_target(self.cmdr_key, target_id, now_iso()):
+        parent = self.details if self.details is not None else self.panel
+        question = (
+            f'Has the haul "{label}" already been reported?'
+            if label
+            else "Has this haul already been reported?"
+        )
+        if not messagebox.askyesno(
+            "Finish haul",
+            f"{question}\n\n"
+            "Yes moves it to Finished hauls and marks it as reported.\n"
+            "No keeps it in Active hauls.",
+            parent=parent,
+            default="no",
+        ):
+            return
+        if self.store.reset_target(
+            self.cmdr_key, target_id, now_iso(), reason="reported"
+        ):
             self.refresh()
 
     def _reset_all(self) -> None:
