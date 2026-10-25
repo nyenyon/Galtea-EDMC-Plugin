@@ -45,7 +45,8 @@ Versions match `VERSION` in `load.py`.
   instead of native message boxes.
 - The main-window target list keeps its tonnage column at a fixed width and
   right-aligns it, while the name column grows and shows more of the name as
-  the window widens.
+  the window widens. The same name fitting is used in the Active hauls and
+  Finished hauls tabs.
 - Every target now has a unique batch ID. Reporting the same carrier again
   creates a separate entry in **Finished hauls**, and restoring a reported
   batch keeps it separate from a newer batch instead of merging the tonnage.

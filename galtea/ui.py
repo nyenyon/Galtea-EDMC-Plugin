@@ -301,6 +301,21 @@ class PluginUI:
             value_width = value.winfo_reqwidth()
         self._fit_panel_text(label, full_text, row_width - value_width - 4)
 
+    def _fit_row_label(
+        self, row: tk.Frame, label: tk.Label, full_text: str
+    ) -> None:
+        """Fit a details-window name to its first grid cell."""
+        try:
+            bbox = row.grid_bbox(0, 0)
+        except tk.TclError:
+            return
+        if not bbox:
+            return
+        width = int(bbox[2])
+        if width <= 1:
+            return
+        self._fit_panel_text(label, full_text, width - 4)
+
     def _refresh_panel(self) -> None:
         if self.panel_rows is None or self.panel_total is None or self.panel_more is None:
             return
@@ -444,6 +459,9 @@ class PluginUI:
             else:
                 self.targets_view.grid_remove()
                 self.history_view.grid()
+        # Rebuild the rows after a tab switch so their labels fit the visible
+        # width and the Reported flags stay current.
+        self._history_sig = None
         self._refresh_details()
 
     def _update_details_tabs(self) -> None:
@@ -547,9 +565,8 @@ class PluginUI:
             row.pack(fill="x", pady=1)
             row.columnconfigure(0, weight=1)
 
-            tk.Label(row, text=_short(target.label, 32), anchor="w").grid(
-                row=0, column=0, sticky="ew"
-            )
+            name_label = tk.Label(row, text=_short(target.label, 32), anchor="w")
+            name_label.grid(row=0, column=0, sticky="ew")
             tk.Label(row, text=target.kind_label, width=15, anchor="w").grid(
                 row=0, column=1, sticky="w", padx=(8, 0)
             )
@@ -580,6 +597,17 @@ class PluginUI:
                     font="TkSmallCaptionFont",
                 ).grid(row=1, column=0, sticky="w")
 
+            row.bind(
+                "<Configure>",
+                lambda _event, r=row, l=name_label, t=target.label: (
+                    self._fit_row_label(r, l, t)
+                ),
+                add="+",
+            )
+            row.after_idle(
+                lambda r=row, l=name_label, t=target.label: self._fit_row_label(r, l, t)
+            )
+
         _bind_wheel(self.target_rows, self.target_wheel)
         _apply_theme(self.target_rows)
 
@@ -607,9 +635,8 @@ class PluginUI:
             row.pack(fill="x", pady=1)
             row.columnconfigure(0, weight=1)
 
-            tk.Label(row, text=_short(target.label, 24), anchor="w").grid(
-                row=0, column=0, sticky="ew"
-            )
+            name_label = tk.Label(row, text=_short(target.label, 24), anchor="w")
+            name_label.grid(row=0, column=0, sticky="ew")
             tk.Label(row, text=target.kind_label, width=15, anchor="w").grid(
                 row=0, column=1, sticky="w", padx=(8, 0)
             )
@@ -640,6 +667,17 @@ class PluginUI:
                     hid, label
                 ),
             ).grid(row=0, column=6, sticky="e", padx=(4, 0))
+
+            row.bind(
+                "<Configure>",
+                lambda _event, r=row, l=name_label, t=target.label: (
+                    self._fit_row_label(r, l, t)
+                ),
+                add="+",
+            )
+            row.after_idle(
+                lambda r=row, l=name_label, t=target.label: self._fit_row_label(r, l, t)
+            )
 
         _bind_wheel(self.history_rows, self.history_wheel)
         _apply_theme(self.history_rows)
