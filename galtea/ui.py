@@ -30,12 +30,6 @@ PANEL_ROWS = 3
 SETTING_DISCORD_USER = "galtea_discord_user"
 GITHUB_URL = "https://github.com/nyenyon/Galtea-EDMC-Plugin"
 
-_HISTORY_REASON_LABELS = {
-    "reported": "Reported",
-    "deleted": "Reset",
-    "reset_all": "Reset all",
-}
-
 try:  # EDMC 6 exposes the config singleton from the config package
     from config import config as _edmc_config
 except ImportError:  # older EDMC provides the getters on the module itself
@@ -79,11 +73,6 @@ def _open_url(url: str) -> None:
 def _short(text: str, limit: int = 34) -> str:
     text = str(text or "")
     return text if len(text) <= limit else text[: limit - 1] + "\u2026"
-
-
-def _reason_label(reason: Any) -> str:
-    text = str(reason or "")
-    return _HISTORY_REASON_LABELS.get(text, text or "Deleted")
 
 
 def _apply_theme(widget: tk.Misc) -> None:
@@ -432,14 +421,6 @@ class PluginUI:
                 width=8,
                 command=lambda hid=entry.get("id"): self._restore(hid),
             ).grid(row=0, column=4, sticky="e")
-
-            detail = _reason_label(entry.get("reason"))
-            short_id = str(target.id or "")[:8]
-            if short_id:
-                detail = f"{detail} \u00b7 {short_id}"
-            tk.Label(row, text=detail, anchor="w", font="TkSmallCaptionFont").grid(
-                row=1, column=0, columnspan=5, sticky="w"
-            )
 
         _bind_wheel(self.history_rows, self.history_wheel)
         _apply_theme(self.history_rows)

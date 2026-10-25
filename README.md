@@ -29,7 +29,7 @@ Total: 3,940 t
 [ Details ]
 ```
 
-The details window lists every target with its own **Report** and **Reset** buttons, a **Reset all** button, and a **History** section containing every archived entry (reason, short batch ID, name, type, tonnage, deletion time) with a **Restore** button. The reason shows whether the entry was **Reported**, **Reset** or cleared with **Reset all**.
+The details window lists every target with its own **Report** and **Reset** buttons, a **Reset all** button, and a **History** section containing every archived entry (name, type, tonnage, deletion time) with a **Restore** button.
 
 **Report** shows the Discord/Sicord macro for that target in a copyable field:
 
@@ -41,7 +41,7 @@ The details window lists every target with its own **Report** and **Reset** butt
 
 Once the tonnage has been reported, the **Reported** button in the same window archives the target: it disappears from the running totals and moves to the history, just like **Reset**. It can be restored from there if needed.
 
-Every report is stored as its own batch with a unique ID. Reporting the same carrier again later creates a separate history entry. If you restore an older batch while the same carrier already has a newer one, both stay separate – new deliveries go to the newest batch – and the short batch IDs are shown so you can tell the entries apart.
+Every report is stored as its own batch with a unique ID. Reporting the same carrier again later creates a separate history entry. If you restore an older batch while the same carrier already has a newer one, both stay separate and new deliveries go to the newest batch. In that case the details window and the report window show the short batch IDs so you can tell the entries apart.
 
 Deletes always move the entry to the history instead of discarding it, so an accidental reset can be undone. The history keeps the last 200 entries.
 

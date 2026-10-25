@@ -12,8 +12,6 @@ Versions match `VERSION` in `load.py`.
 - **Reported** button in the "Report delivery" window: once the tonnage has
   been reported, it removes the target from the running totals and moves it to
   the history, where it can be restored.
-- The history now shows why an entry was archived (**Reported**, **Reset** or
-  **Reset all**) together with a short batch ID.
 - If restoring a report leaves several active batches for the same carrier,
   the details window and the report window show each batch's short ID so they
   can be told apart.
