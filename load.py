@@ -43,7 +43,7 @@ def _ensure_ui(parent: Optional[tk.Misc] = None) -> PluginUI:
     global _ui
     _ensure()
     if _ui is None:
-        _ui = PluginUI(parent, _tracker, _store)
+        _ui = PluginUI(parent, _tracker, _store, VERSION)
     return _ui
 
 

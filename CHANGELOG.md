@@ -11,6 +11,7 @@ Versions match `VERSION` in `load.py`.
 
 - The report window shows a reminder to set your own Discord handle while the
   placeholder `@yourdiscordname` is still in use.
+- The plugin settings tab shows the version and links to the GitHub repository.
 
 ### Changed
 

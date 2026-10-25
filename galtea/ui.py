@@ -8,6 +8,8 @@ styling is not applied to plugin widgets.
 from __future__ import annotations
 
 import tkinter as tk
+import webbrowser
+from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 from typing import Any, Dict, List, Optional
 
@@ -26,6 +28,7 @@ from .store import HaulStore
 
 PANEL_ROWS = 3
 SETTING_DISCORD_USER = "galtea_discord_user"
+GITHUB_URL = "https://github.com/nyenyon/Galtea-EDMC-Plugin"
 
 try:  # EDMC 6 exposes the config singleton from the config package
     from config import config as _edmc_config
@@ -57,6 +60,13 @@ def _set_setting(key: str, value: str) -> None:
         if callable(save):
             save()
     except Exception:  # noqa: BLE001 - saving prefs must never fail loudly
+        pass
+
+
+def _open_url(url: str) -> None:
+    try:
+        webbrowser.open(url)
+    except Exception:  # noqa: BLE001 - opening a browser must never break the UI
         pass
 
 
@@ -143,10 +153,11 @@ def _clear(frame: tk.Misc) -> None:
 class PluginUI:
     """Owns every widget the plugin adds to EDMC."""
 
-    def __init__(self, parent: tk.Misc, tracker: Any, store: HaulStore):
+    def __init__(self, parent: tk.Misc, tracker: Any, store: HaulStore, version: str = ""):
         self.parent = parent
         self.tracker = tracker
         self.store = store
+        self.version = str(version or "")
 
         self.panel: Optional[tk.Frame] = None
         self.panel_rows: Optional[tk.Frame] = None
@@ -163,6 +174,7 @@ class PluginUI:
 
         self.report_window: Optional[tk.Toplevel] = None
         self.discord_user_var: Optional[tk.StringVar] = None
+        self.link_font: Optional[tkfont.Font] = None
 
     # -- helpers ---------------------------------------------------------
 
@@ -556,6 +568,19 @@ class PluginUI:
         nb.Button(frame, text="Reset all tracked entries\u2026", command=self._reset_all).grid(
             row=5, column=0, sticky="w"
         )
+
+        # Let the footer sit at the bottom of the page, below the controls.
+        frame.rowconfigure(6, weight=1)
+        footer = tk.Frame(frame)
+        footer.grid(row=7, column=0, sticky="w", pady=(12, 0))
+        tk.Label(footer, text=f"Version {self.version or 'unknown'}").pack(side="left")
+        if self.link_font is None:
+            self.link_font = tkfont.nametofont("TkDefaultFont").copy()
+            self.link_font.configure(underline=True)
+        link = tk.Label(footer, text=GITHUB_URL, cursor="hand2", font=self.link_font)
+        link.pack(side="left", padx=(8, 0))
+        link.bind("<Button-1>", lambda _event: _open_url(GITHUB_URL))
+        _apply_theme(footer)
         return frame
 
     def save_prefs(self) -> None:
