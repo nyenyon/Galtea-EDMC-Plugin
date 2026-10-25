@@ -22,10 +22,12 @@ There is no linter or CI configuration; do not invent one without asking.
 ## Working here
 
 - `galtea/` must stay importable without EDMC: only `load.py` and `galtea/ui.py` may import EDMC modules (`myNotebook`, `theme`) or tkinter.
-- UI uses classic `tk` widgets (not `ttk`) and registers every widget tree with EDMC's `theme.update()`; `ttk` widgets are not recoloured by EDMC in dark mode. New widgets must go through `_apply_theme()`.
+- UI uses classic `tk` widgets (not `ttk`) and registers every widget tree with EDMC's `theme.update()`; `ttk` widgets are not recoloured by EDMC in dark mode. New widgets must go through `_apply_theme()`. Exception: EDMC does not theme plugin settings tabs, so `build_prefs()` uses `nb` widgets and keeps the default colours there.
 - `journal_entry` runs on EDMC's Tk main thread, so UI updates are safe there; keep journal handling non-blocking and wrap it in `try/except`.
 - Journal field names are verified against real journal samples; check EDDI/EDDiscovery before adding new events.
 - Journals sometimes report squadron carriers as `StationType: "FleetCarrier"`; `squadronBank` in `StationServices` and four-character callsigns (e.g. `0822`) identify them. Squadron carrier names also end in such a callsign in `SupercruiseDestinationDrop`.
 - EDMC only sends journal events while the game is running (plus a synthetic `StartUp` event when it starts with the game already running). `Tracker` therefore preloads the last commander via `HaulStore.last_commander()`; keep `remember_commander()` in sync when commander handling changes.
+- Since `SCHEMA_VERSION` 2, `data/haul_tracker.json` keys targets by a unique batch id, not by market id: the same carrier can have several active batches after an old report is restored. Deliveries go to the newest active batch; `reset_target()` takes a batch id (a market id still resolves to the newest batch); `restore()` reinserts a batch separately instead of merging. `_migrate()` upgrades old files on load and must be extended for schema changes.
+- **Report** shows `/addscore user:<handle> points:<tons> comment:<target>`; **Reported** archives the batch via `reset_target(..., reason="reported")`. The handle is the EDMC config key `galtea_discord_user`, default placeholder `@yourdiscordname`.
 - User-visible changes are recorded in `CHANGELOG.md` (Keep a Changelog style, versions match `VERSION` in `load.py`).
 - Remote is `git@github.com:nyenyon/Galtea-EDMC-Plugin.git`; the default branch is `main`.
