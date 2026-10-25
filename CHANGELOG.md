@@ -5,7 +5,7 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
-## [0.3.0] - 2026-10-25
+## [0.5.0] - 2026-10-25
 
 ### Added
 
