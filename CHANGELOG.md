@@ -20,6 +20,7 @@ Versions match `VERSION` in `load.py`.
 - The report window shows a reminder to set your own Discord handle while the
   placeholder `@yourdiscordname` is still in use.
 - The plugin settings tab shows the version and links to the GitHub repository.
+- Added a project logo, shown at the top of the README.
 - The **Active hauls** tab shows the number of active entries in its label.
 - Entries in **Finished hauls** have a **Delete** button that permanently
   removes the entry after a confirmation. **Delete all** on that tab clears the
@@ -65,6 +66,7 @@ Versions match `VERSION` in `load.py`.
   `SupercruiseDestinationDrop` where possible, including name-only, localized
   and missing-`MarketID` variants, and are cached per commander. The callsign
   is no longer shown until the second visit.
+- Mouse-wheel scrolling handles the small trackpad deltas reported by macOS.
 
 ## [0.2.0] - 2026-10-24
 

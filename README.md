@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.svg" alt="Galtea Haul Tracker logo" width="160">
+</p>
+
 # Galtea Haul Tracker (EDMC plugin)
 
 **Runs on EDMC for Windows, macOS and Linux.**
