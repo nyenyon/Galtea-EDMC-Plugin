@@ -36,7 +36,7 @@ Total: 3,940 t
 [ Details ]
 ```
 
-The details window has **Active hauls (N)** and **Finished hauls (N)** tabs, both showing their entry count. **Active hauls** is shown first and lists every target with its own **Report** and **Finish haul** buttons. **Finish haul** asks whether the haul was already reported; **Yes** moves it to **Finished hauls**, **No** keeps it active. The header action on this tab is **Finish all hauls**. The **Finished hauls** tab lists name, type, tonnage, whether the entry was reported, and the finish time, with **Restore** and **Delete** buttons for each entry. Its header action is **Delete all**, which clears the whole list. All delete actions are permanent and ask for confirmation first.
+The details window has **Active hauls (N)** and **Finished hauls (N)** tabs, both showing their entry count. **Active hauls** is shown first and lists every target with its own **Report** and **Finish haul** buttons. **Finish haul** asks whether the haul was already reported: **Yes** moves it to **Finished hauls** and marks it as reported, **No, do it anyway** moves it without the reported flag, and **Cancel** keeps it active. The header action on this tab is **Finish all hauls**. The **Finished hauls** tab lists name, type, tonnage, whether the entry was reported, and the finish time, with **Restore** and **Delete** buttons for each entry. Its header action is **Delete all**, which clears the whole list. All delete actions are permanent and ask for confirmation first.
 
 **Report** shows the Project Galtea Discord/Sicord macro for that target in a copyable field:
 
@@ -50,7 +50,7 @@ Once the tonnage has been reported, the **Reported** button in the same window f
 
 Every report is stored as its own batch with a unique ID. Reporting the same carrier again later creates a separate entry in **Finished hauls**. If you restore an older batch while the same carrier already has a newer one, both stay separate and new deliveries go to the newest batch. In that case the details window and the report window show the short batch IDs so you can tell the entries apart.
 
-**Finish haul** moves an entry to **Finished hauls** only after you confirm that it was already reported, so unreported tonnage is not archived by accident. The **Finished hauls** tab keeps the last 200 entries. Deleting an entry from **Finished hauls**, or using **Delete all**, is permanent and cannot be undone; both actions ask for confirmation first.
+**Finish haul** lets you finish a haul with or without the reported flag, so unreported tonnage is never archived silently. The **Finished hauls** tab keeps the last 200 entries. Deleting an entry from **Finished hauls**, or using **Delete all**, is permanent and cannot be undone; both actions ask for confirmation first.
 
 ## Install
 

@@ -711,25 +711,88 @@ class PluginUI:
 
     # -- actions ---------------------------------------------------------
 
-    def _reset_target(self, target_id: str, label: str = "") -> None:
-        if not self.cmdr_key:
-            return
+    def _ask_finish_haul(self, label: str = "") -> Optional[str]:
+        """Ask whether a haul was reported; return reported, unreported or None."""
         parent = self.details if self.details is not None else self.panel
+        owner = parent.winfo_toplevel()
+        window = tk.Toplevel(parent)
+        window.title("Finish haul")
+        window.transient(owner)
+        window.resizable(False, False)
+
+        result: Optional[str] = None
+
+        def close(decision: Optional[str]) -> None:
+            nonlocal result
+            result = decision
+            try:
+                window.destroy()
+            except tk.TclError:
+                pass
+
+        window.protocol("WM_DELETE_WINDOW", lambda: close(None))
+        window.bind("<Escape>", lambda _event: close(None))
+
+        frame = tk.Frame(window, padx=12, pady=12)
+        frame.pack(fill="both", expand=True)
         question = (
             f'Has the haul "{label}" already been reported?'
             if label
             else "Has this haul already been reported?"
         )
-        if not messagebox.askyesno(
-            "Finish haul",
-            f"{question}\n\n"
-            "Yes moves it to Finished hauls.\n"
-            "No keeps it in Active hauls.",
-            parent=parent,
-            default="no",
-        ):
+        tk.Label(
+            frame, text=question, font="TkHeadingFont", justify="left", wraplength=480
+        ).pack(anchor="w")
+        tk.Label(
+            frame,
+            text=(
+                "Yes marks it as reported.\n"
+                "No, do it anyway finishes it without the reported flag.\n"
+                "Cancel keeps it in Active hauls."
+            ),
+            justify="left",
+            wraplength=480,
+        ).pack(anchor="w", pady=(6, 12))
+
+        buttons = tk.Frame(frame)
+        buttons.pack(fill="x")
+        tk.Button(buttons, text="Yes", width=8, command=lambda: close("reported")).pack(
+            side="left"
+        )
+        tk.Button(
+            buttons,
+            text="No, do it anyway",
+            command=lambda: close("unreported"),
+        ).pack(side="left", padx=(6, 0))
+        cancel = tk.Button(buttons, text="Cancel", width=8, command=lambda: close(None))
+        cancel.pack(side="right")
+
+        _apply_theme(window)
+        window.update_idletasks()
+        x = owner.winfo_rootx() + max(
+            (owner.winfo_width() - window.winfo_reqwidth()) // 2, 0
+        )
+        y = owner.winfo_rooty() + max(
+            (owner.winfo_height() - window.winfo_reqheight()) // 2, 0
+        )
+        window.geometry(f"+{x}+{y}")
+        window.wait_visibility()
+        cancel.focus_set()
+        try:
+            window.grab_set()
+        except tk.TclError:
+            pass
+        window.wait_window()
+        return result
+
+    def _reset_target(self, target_id: str, label: str = "") -> None:
+        if not self.cmdr_key:
             return
-        if self.store.reset_target(self.cmdr_key, target_id, now_iso()):
+        decision = self._ask_finish_haul(label)
+        if decision is None:
+            return
+        reason = "reported" if decision == "reported" else "unreported"
+        if self.store.reset_target(self.cmdr_key, target_id, now_iso(), reason=reason):
             self.refresh()
 
     def _reset_all(self) -> None:
