@@ -170,8 +170,10 @@ class PluginUI:
         self.details_content: Optional[tk.Frame] = None
         self.targets_view: Optional[tk.Frame] = None
         self.history_view: Optional[tk.Frame] = None
-        self.tab_targets: Optional[tk.Button] = None
-        self.tab_history: Optional[tk.Button] = None
+        self.tab_targets: Optional[tk.Label] = None
+        self.tab_history: Optional[tk.Label] = None
+        self.tab_targets_bar: Optional[tk.Frame] = None
+        self.tab_history_bar: Optional[tk.Frame] = None
         self.target_rows: Optional[tk.Frame] = None
         self.history_rows: Optional[tk.Frame] = None
         self.target_wheel: Any = None
@@ -289,7 +291,7 @@ class PluginUI:
         outer = tk.Frame(window, padx=12, pady=12)
         outer.pack(fill="both", expand=True)
         outer.columnconfigure(0, weight=1)
-        outer.rowconfigure(2, weight=1)
+        outer.rowconfigure(3, weight=1)
 
         header = tk.Frame(outer)
         header.grid(row=0, column=0, sticky="ew")
@@ -301,18 +303,20 @@ class PluginUI:
         )
 
         tabs = tk.Frame(outer)
-        tabs.grid(row=1, column=0, sticky="w", pady=(12, 6))
-        self.tab_targets = tk.Button(
-            tabs, text="Targets", command=lambda: self._show_details_view("targets")
+        tabs.grid(row=1, column=0, sticky="ew", pady=(12, 0))
+        self.tab_targets, self.tab_targets_bar = self._build_details_tab(
+            tabs, "Targets", "targets"
         )
-        self.tab_targets.pack(side="left")
-        self.tab_history = tk.Button(
-            tabs, text="History (0)", command=lambda: self._show_details_view("history")
+        self.tab_history, self.tab_history_bar = self._build_details_tab(
+            tabs, "History (0)", "history"
         )
-        self.tab_history.pack(side="left", padx=(4, 0))
+
+        # Dim line under the whole tab strip; the active tab gets an accent
+        # bar of its own just above it.
+        tk.Frame(outer, highlightthickness=1).grid(row=2, column=0, sticky="ew")
 
         self.details_content = tk.Frame(outer)
-        self.details_content.grid(row=2, column=0, sticky="nsew")
+        self.details_content.grid(row=3, column=0, sticky="nsew")
         self.details_content.columnconfigure(0, weight=1)
         self.details_content.rowconfigure(0, weight=1)
 
@@ -341,6 +345,24 @@ class PluginUI:
         self._show_details_view("targets")
         _apply_theme(window)
 
+    def _build_details_tab(
+        self, parent: tk.Misc, text: str, view: str
+    ) -> tuple[tk.Label, tk.Frame]:
+        """Create one flat tab label with a thin accent bar underneath."""
+        cell = tk.Frame(parent)
+        cell.pack(side="left")
+        label = tk.Label(cell, text=text, padx=12, pady=4)
+        label.pack(side="top")
+        bar = tk.Frame(cell, height=2, bd=0)
+        bar.pack(side="bottom", fill="x")
+
+        def switch(_event: tk.Event) -> None:
+            self._show_details_view(view)
+
+        for widget in (cell, label, bar):
+            widget.bind("<Button-1>", switch)
+        return label, bar
+
     def _show_details_view(self, view: str) -> None:
         """Switch between the targets and history tabs."""
         self.details_view = "history" if view == "history" else "targets"
@@ -354,19 +376,31 @@ class PluginUI:
         self._refresh_details()
 
     def _update_details_tabs(self) -> None:
-        if self.tab_targets is not None:
-            try:
-                self.tab_targets.configure(
-                    relief="sunken" if self.details_view == "targets" else "raised"
-                )
-            except tk.TclError:
-                pass
         if self.tab_history is not None:
             try:
-                self.tab_history.configure(
-                    text=f"History ({len(self._history())})",
-                    relief="sunken" if self.details_view == "history" else "raised",
-                )
+                self.tab_history.configure(text=f"History ({len(self._history())})")
+            except tk.TclError:
+                pass
+
+        accent = background = ""
+        try:
+            current = getattr(theme, "current", None) or {}
+            accent = str(current.get("foreground") or "")
+            background = str(current.get("background") or "")
+        except Exception:  # noqa: BLE001 - theming must never break the window
+            pass
+
+        for view, bar in (
+            ("targets", self.tab_targets_bar),
+            ("history", self.tab_history_bar),
+        ):
+            if bar is None:
+                continue
+            color = accent if view == self.details_view else background
+            if not color:
+                continue
+            try:
+                bar.configure(background=color)
             except tk.TclError:
                 pass
 
@@ -383,6 +417,8 @@ class PluginUI:
         self.history_view = None
         self.tab_targets = None
         self.tab_history = None
+        self.tab_targets_bar = None
+        self.tab_history_bar = None
         self._history_sig = None
 
     def _refresh_details(self) -> None:
