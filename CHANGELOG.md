@@ -5,10 +5,13 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
-## [0.2.1] - 2026-10-24
+## [0.3.0] - 2026-10-25
 
 ### Added
 
+- **Reported** button in the "Report delivery" window: once the tonnage has
+  been reported, it removes the target from the running totals and moves it to
+  the history, where it can be restored.
 - The report window shows a reminder to set your own Discord handle while the
   placeholder `@yourdiscordname` is still in use.
 - The plugin settings tab shows the version and links to the GitHub repository.

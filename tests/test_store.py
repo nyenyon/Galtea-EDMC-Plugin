@@ -56,6 +56,20 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(history[0]["deleted_at"], "2026-01-02T08:00:00Z")
         self.assertEqual(history[0]["reason"], "deleted")
 
+    def test_reported_target_is_archived_with_reason(self) -> None:
+        self.add_carrier(1320)
+
+        self.assertTrue(
+            self.store.reset_target(
+                "F123", CARRIER["market_id"], "2026-01-02T08:00:00Z", reason="reported"
+            )
+        )
+        self.assertEqual(self.store.targets("F123"), [])
+        history = self.store.history("F123")
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["reason"], "reported")
+        self.assertEqual(history[0]["target"]["tons"], 1320)
+
     def test_history_survives_restart(self) -> None:
         self.add_carrier(1320)
         self.store.reset_target("F123", CARRIER["market_id"])

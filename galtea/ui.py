@@ -459,6 +459,12 @@ class PluginUI:
         copy_button = tk.Button(buttons, text="Copy", width=8)
         copy_button.configure(command=lambda: self._copy_report(command, copy_button))
         copy_button.pack(side="left")
+        tk.Button(
+            buttons,
+            text="Reported",
+            width=10,
+            command=lambda: self._mark_reported(target),
+        ).pack(side="left", padx=(6, 0))
         tk.Button(buttons, text="Close", width=8, command=self._close_report).pack(side="right")
 
         _apply_theme(window)
@@ -474,6 +480,16 @@ class PluginUI:
 
         entry.focus_set()
         entry.select_range(0, "end")
+
+    def _mark_reported(self, target: Target) -> None:
+        """Archive a target after its tonnage has been reported."""
+        if not self.cmdr_key:
+            return
+        if self.store.reset_target(
+            self.cmdr_key, target.market_id, now_iso(), reason="reported"
+        ):
+            self.refresh()
+        self._close_report()
 
     def _copy_report(self, command: str, button: tk.Button) -> None:
         owner = self.details if self.details is not None else self.parent
