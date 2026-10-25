@@ -187,6 +187,7 @@ class PluginUI:
         self._history_sig: Optional[tuple] = None
 
         self.report_window: Optional[tk.Toplevel] = None
+        self.report_copied = False
         self.discord_user_var: Optional[tk.StringVar] = None
         self.link_font: Optional[tkfont.Font] = None
 
@@ -586,6 +587,7 @@ class PluginUI:
         command = target.report_command(user)
         parent = self.details if self.details is not None else self.panel
         self._close_report()
+        self.report_copied = False
 
         window = tk.Toplevel(parent)
         window.title("Report delivery")
@@ -662,6 +664,18 @@ class PluginUI:
         """Archive a target after its tonnage has been reported."""
         if not self.cmdr_key:
             return
+        if not self.report_copied:
+            parent = self.report_window
+            if parent is None:
+                parent = self.details if self.details is not None else self.panel
+            if not messagebox.askyesno(
+                "Confirm reported",
+                "The command was not copied. Was this delivery really reported?\n\n"
+                "Archiving removes it from the active targets.",
+                parent=parent,
+                default="no",
+            ):
+                return
         if self.store.reset_target(self.cmdr_key, target.id, now_iso(), reason="reported"):
             self.refresh()
         self._close_report()
@@ -673,6 +687,7 @@ class PluginUI:
             owner.clipboard_append(command)
         except tk.TclError:
             return
+        self.report_copied = True
         try:
             button.configure(text="Copied")
             button.after(1800, lambda: self._reset_copy_label(button))
@@ -694,6 +709,7 @@ class PluginUI:
             except tk.TclError:
                 pass
         self.report_window = None
+        self.report_copied = False
 
     # -- actions ---------------------------------------------------------
 

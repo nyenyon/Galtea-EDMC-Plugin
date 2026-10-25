@@ -23,6 +23,8 @@ Versions match `VERSION` in `load.py`.
 - History entries have a **Delete** button that permanently removes the entry
   after a confirmation. **Delete all** on the History tab clears the whole
   history, also after a confirmation.
+- Pressing **Reported** without pressing **Copy** first asks for confirmation,
+  preventing accidental archiving.
 
 ### Changed
 

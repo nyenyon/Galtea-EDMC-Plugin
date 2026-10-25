@@ -46,7 +46,7 @@ The details window has **Targets (N)** and **History (N)** tabs, both showing th
 
 `comment:` is the target as shown in the list: the carrier name with its callsign, or the construction site being built. The Discord handle is configurable in the plugin preferences; the default is the placeholder `@yourdiscordname`, so no real user is credited by accident. The configured handle is stored in EDMC's configuration and persists across restarts. While the placeholder is still in use, the report window shows a reminder to change it in the plugin preferences.
 
-Once the tonnage has been reported, the **Reported** button in the same window archives the target: it disappears from the running totals and moves to the history, just like **Archive**. It can be restored from there if needed.
+Once the tonnage has been reported, the **Reported** button in the same window archives the target: it disappears from the running totals and moves to the history, just like **Archive**. It can be restored from there if needed. If **Copy** was not pressed first, a confirmation asks whether the delivery was really reported.
 
 Every report is stored as its own batch with a unique ID. Reporting the same carrier again later creates a separate history entry. If you restore an older batch while the same carrier already has a newer one, both stay separate and new deliveries go to the newest batch. In that case the details window and the report window show the short batch IDs so you can tell the entries apart.
 
