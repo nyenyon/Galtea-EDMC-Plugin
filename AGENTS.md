@@ -4,6 +4,7 @@
 
 - EDMC plugin written in Python 3 (standard library only, no third-party packages).
 - Entry point `load.py`; implementation in the `galtea` package; tests in `tests/`.
+- The plugin is built for [Project Galtea](https://projectgaltea.org), an Elite Dangerous colonisation initiative; the Report command feeds the project's Discord/Sicord score bot.
 - The plugin tracks tonnage sold to fleet/squadron carriers (`MarketSell`) and commodities delivered to construction sites (`ColonisationContribution`). Totals persist in `data/haul_tracker.json` (git-ignored).
 - `README.md` documents behaviour, install steps and the data file.
 

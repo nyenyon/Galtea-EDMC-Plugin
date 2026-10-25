@@ -5,9 +5,11 @@
 > **Note:** This plugin was created entirely with AI agents. Code, tests and
 > documentation were generated and reviewed by them.
 
-An [EDMarketConnector](https://github.com/EDCD/EDMarketConnector) plugin that counts the tonnage you sell at **fleet carriers** and **squadron carriers**, and the commodities you deliver to **construction sites** (space and planetary), with running totals per target.
+An [EDMarketConnector](https://github.com/EDCD/EDMarketConnector) plugin built for [Project Galtea](https://projectgaltea.org), the community-driven colonisation effort in Elite Dangerous. It counts the tonnage you sell at **fleet carriers** and **squadron carriers**, and the commodities you deliver to **construction sites** (space and planetary), with running totals per target.
 
-This is step 1 of the Galtea plugin: a focused haul tracker, nothing else.
+## Project Galtea
+
+[Project Galtea](https://projectgaltea.org) is a community-driven Elite Dangerous colonisation initiative building a resupply bridge into the Arcadian Stream. This plugin keeps each commander's hauling totals for the project and turns every target into the `/addscore` command used to report contributions on the Galtea Discord/Sicord.
 
 ## What it tracks
 
@@ -36,7 +38,7 @@ Total: 3,940 t
 
 The details window has **Targets** and **History** tabs. **Targets** is shown first and lists every target with its own **Report** and **Archive** buttons; **Archive all** sits in the header. The **History** tab shows the number of archived entries in its label and lists name, type, tonnage, whether the entry was reported, and the archival time, with a **Restore** button for each entry.
 
-**Report** shows the Discord/Sicord macro for that target in a copyable field:
+**Report** shows the Project Galtea Discord/Sicord macro for that target in a copyable field:
 
 ```
 /addscore user:@yourdiscordname points:2372 comment:[PJGT]PANDA BEAR (B6W-34K)
@@ -64,7 +66,7 @@ The plugin needs no third-party packages and makes no network requests.
 
 The plugin adds a **Galtea Haul Tracker** tab to EDMC's settings:
 
-- **Discord user for the Report command** – the handle used as `user:@name` in the `/addscore` command. The default is the placeholder `@yourdiscordname`; set your own handle before reporting. It is stored in EDMC's configuration and survives restarts.
+- **Discord user for the Report command** – the Project Galtea Discord handle used as `user:@name` in the `/addscore` command. The default is the placeholder `@yourdiscordname`; set your own handle before reporting. It is stored in EDMC's configuration and survives restarts.
 - **Archive all tracked entries…** – archives every active target in the history.
 - The footer shows the plugin version and links to the GitHub repository.
 
