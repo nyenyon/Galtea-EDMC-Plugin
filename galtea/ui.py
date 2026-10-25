@@ -570,17 +570,18 @@ class PluginUI:
         )
 
         # Let the footer sit at the bottom of the page, below the controls.
+        # EDMC does not theme the plugin prefs tab, so use its default colours
+        # (nb widgets) and do not register these labels with theme.update().
         frame.rowconfigure(6, weight=1)
-        footer = tk.Frame(frame)
-        footer.grid(row=7, column=0, sticky="w", pady=(12, 0))
-        tk.Label(footer, text=f"Version {self.version or 'unknown'}").pack(side="left")
+        nb.Label(frame, text=f"Version {self.version or 'unknown'}").grid(
+            row=7, column=0, sticky="w", pady=(12, 0)
+        )
         if self.link_font is None:
             self.link_font = tkfont.nametofont("TkDefaultFont").copy()
             self.link_font.configure(underline=True)
-        link = tk.Label(footer, text=GITHUB_URL, cursor="hand2", font=self.link_font)
-        link.pack(side="left", padx=(8, 0))
+        link = nb.Label(frame, text=GITHUB_URL, cursor="hand2", font=self.link_font)
+        link.grid(row=7, column=1, sticky="w", padx=(8, 0), pady=(12, 0))
         link.bind("<Button-1>", lambda _event: _open_url(GITHUB_URL))
-        _apply_theme(footer)
         return frame
 
     def save_prefs(self) -> None:
