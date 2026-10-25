@@ -190,6 +190,7 @@ class PluginUI:
         self.report_copied = False
         self.discord_user_var: Optional[tk.StringVar] = None
         self.link_font: Optional[tkfont.Font] = None
+        self._panel_fonts: Dict[str, tkfont.Font] = {}
 
     # -- helpers ---------------------------------------------------------
 
@@ -251,6 +252,55 @@ class PluginUI:
         self._refresh_panel()
         self._refresh_details()
 
+    def _label_font(self, label: tk.Label) -> tkfont.Font:
+        """Font used by a panel label, cached per font specification."""
+        spec = str(label.cget("font"))
+        font = self._panel_fonts.get(spec)
+        if font is None:
+            try:
+                font = tkfont.Font(root=label, font=label.cget("font"))
+            except tk.TclError:
+                font = tkfont.nametofont("TkDefaultFont")
+            self._panel_fonts[spec] = font
+        return font
+
+    def _fit_panel_text(self, label: tk.Label, full_text: str, available: int) -> None:
+        """Show as much of a label as fits, with an ellipsis when needed."""
+        if available <= 0:
+            return
+        font = self._label_font(label)
+        if font.measure(full_text) <= available:
+            text = full_text
+        else:
+            ellipsis = "\u2026"
+            low, high = 0, len(full_text)
+            while low < high:
+                middle = (low + high + 1) // 2
+                if font.measure(full_text[:middle] + ellipsis) <= available:
+                    low = middle
+                else:
+                    high = middle - 1
+            text = full_text[:low].rstrip() + ellipsis
+        try:
+            if str(label.cget("text")) != text:
+                label.configure(text=text)
+        except tk.TclError:
+            pass
+
+    def _fit_panel_row(
+        self, row: tk.Frame, label: tk.Label, value: tk.Label, full_text: str
+    ) -> None:
+        try:
+            row_width = row.winfo_width()
+            value_width = value.winfo_width()
+        except tk.TclError:
+            return
+        if row_width <= 1:
+            return
+        if value_width <= 1:
+            value_width = value.winfo_reqwidth()
+        self._fit_panel_text(label, full_text, row_width - value_width - 4)
+
     def _refresh_panel(self) -> None:
         if self.panel_rows is None or self.panel_total is None or self.panel_more is None:
             return
@@ -268,13 +318,26 @@ class PluginUI:
             row = tk.Frame(self.panel_rows)
             row.pack(fill="x")
             row.columnconfigure(0, weight=1)
-            # Fixed columns so widening EDMC does not stretch the numbers.
-            tk.Label(row, text=_short(target.label, 24), width=24, anchor="w").grid(
-                row=0, column=0, sticky="w"
-            )
-            tk.Label(
+            # Fixed, right-aligned tonnage column; the label column grows and
+            # shows the whole name when there is room for it.
+            label = tk.Label(row, text=_short(target.label, 24), anchor="w")
+            label.grid(row=0, column=0, sticky="w")
+            value = tk.Label(
                 row, text=f"{format_number(target.tons)} t", width=10, anchor="e"
-            ).grid(row=0, column=1, sticky="e")
+            )
+            value.grid(row=0, column=1, sticky="e")
+            row.bind(
+                "<Configure>",
+                lambda _event, r=row, l=label, v=value, t=target.label: (
+                    self._fit_panel_row(r, l, v, t)
+                ),
+                add="+",
+            )
+            row.after_idle(
+                lambda r=row, l=label, v=value, t=target.label: self._fit_panel_row(
+                    r, l, v, t
+                )
+            )
 
         hidden = len(targets) - PANEL_ROWS
         self.panel_more.configure(text=f"+{hidden} more" if hidden > 0 else "")

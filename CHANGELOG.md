@@ -44,7 +44,8 @@ Versions match `VERSION` in `load.py`.
 - All confirmation dialogs now use the plugin's own themed modal layout
   instead of native message boxes.
 - The main-window target list keeps its tonnage column at a fixed width and
-  right-aligns it, so widening EDMC no longer stretches the numbers.
+  right-aligns it, while the name column grows and shows more of the name as
+  the window widens.
 - Every target now has a unique batch ID. Reporting the same carrier again
   creates a separate entry in **Finished hauls**, and restoring a reported
   batch keeps it separate from a newer batch instead of merging the tonnage.
