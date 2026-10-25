@@ -40,6 +40,8 @@ Versions match `VERSION` in `load.py`.
 - The details header action follows the active tab: **Finish all hauls** on
   **Active hauls** (moves every active target to **Finished hauls**) and
   **Delete all** on **Finished hauls** (permanently clears the list).
+- All confirmation dialogs now use the plugin's own themed modal layout
+  instead of native message boxes.
 - Every target now has a unique batch ID. Reporting the same carrier again
   creates a separate entry in **Finished hauls**, and restoring a reported
   batch keeps it separate from a newer batch instead of merging the tonnage.

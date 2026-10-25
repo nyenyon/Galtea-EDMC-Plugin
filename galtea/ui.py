@@ -10,7 +10,7 @@ from __future__ import annotations
 import tkinter as tk
 import webbrowser
 from tkinter import font as tkfont
-from tkinter import messagebox, ttk
+from tkinter import ttk
 from typing import Any, Dict, List, Optional
 
 import myNotebook as nb
@@ -663,15 +663,13 @@ class PluginUI:
         if not self.cmdr_key:
             return
         if not self.report_copied:
-            parent = self.report_window
-            if parent is None:
-                parent = self.details if self.details is not None else self.panel
-            if not messagebox.askyesno(
+            if not self._confirm(
                 "Confirm reported",
-                "The command was not copied. Was this delivery really reported?\n\n"
-                "Finishing it removes the haul from the active list.",
-                parent=parent,
-                default="no",
+                "Was this delivery really reported?",
+                "The command was not copied. Finishing it removes the haul "
+                "from the active list.",
+                "Yes",
+                parent=self.report_window,
             ):
                 return
         if self.store.reset_target(self.cmdr_key, target.id, now_iso(), reason="reported"):
@@ -711,62 +709,40 @@ class PluginUI:
 
     # -- actions ---------------------------------------------------------
 
-    def _ask_finish_haul(self, label: str = "") -> Optional[str]:
-        """Ask whether a haul was reported; return reported, unreported or None."""
-        parent = self.details if self.details is not None else self.panel
-        owner = parent.winfo_toplevel()
-        window = tk.Toplevel(parent)
-        window.title("Finish haul")
+    def _make_modal(
+        self,
+        title: str,
+        question: str,
+        detail: str,
+        parent: Optional[tk.Misc] = None,
+    ) -> tuple[tk.Toplevel, tk.Misc, tk.Frame]:
+        """Create the shared modal layout and return its window and body."""
+        base = (
+            parent
+            if parent is not None
+            else (self.details if self.details is not None else self.panel)
+        )
+        owner = base.winfo_toplevel()
+        window = tk.Toplevel(base)
+        window.title(title)
         window.transient(owner)
         window.resizable(False, False)
 
-        result: Optional[str] = None
-
-        def close(decision: Optional[str]) -> None:
-            nonlocal result
-            result = decision
-            try:
-                window.destroy()
-            except tk.TclError:
-                pass
-
-        window.protocol("WM_DELETE_WINDOW", lambda: close(None))
-        window.bind("<Escape>", lambda _event: close(None))
-
         frame = tk.Frame(window, padx=12, pady=12)
         frame.pack(fill="both", expand=True)
-        question = (
-            f'Has the haul "{label}" already been reported?'
-            if label
-            else "Has this haul already been reported?"
-        )
         tk.Label(
             frame, text=question, font="TkHeadingFont", justify="left", wraplength=480
         ).pack(anchor="w")
-        tk.Label(
-            frame,
-            text=(
-                "Yes marks it as reported.\n"
-                "No, do it anyway finishes it without the reported flag.\n"
-                "Cancel keeps it in Active hauls."
-            ),
-            justify="left",
-            wraplength=480,
-        ).pack(anchor="w", pady=(6, 12))
+        if detail:
+            tk.Label(
+                frame, text=detail, justify="left", wraplength=480
+            ).pack(anchor="w", pady=(6, 12))
+        return window, owner, frame
 
-        buttons = tk.Frame(frame)
-        buttons.pack(fill="x")
-        tk.Button(buttons, text="Yes", width=8, command=lambda: close("reported")).pack(
-            side="left"
-        )
-        tk.Button(
-            buttons,
-            text="No, do it anyway",
-            command=lambda: close("unreported"),
-        ).pack(side="left", padx=(6, 0))
-        cancel = tk.Button(buttons, text="Cancel", width=8, command=lambda: close(None))
-        cancel.pack(side="right")
-
+    def _show_modal(
+        self, window: tk.Toplevel, owner: tk.Misc, cancel: tk.Button
+    ) -> None:
+        """Apply the theme, centre the modal and wait until it is closed."""
         _apply_theme(window)
         window.update_idletasks()
         x = owner.winfo_rootx() + max(
@@ -786,6 +762,76 @@ class PluginUI:
         except tk.TclError:
             pass
         window.wait_window()
+
+    def _confirm(
+        self,
+        title: str,
+        question: str,
+        detail: str,
+        action: str,
+        parent: Optional[tk.Misc] = None,
+    ) -> bool:
+        """Show a themed confirmation modal; True when the action is chosen."""
+        window, owner, frame = self._make_modal(title, question, detail, parent)
+        result = False
+
+        def close(confirmed: bool) -> None:
+            nonlocal result
+            result = confirmed
+            try:
+                window.destroy()
+            except tk.TclError:
+                pass
+
+        window.protocol("WM_DELETE_WINDOW", lambda: close(False))
+        window.bind("<Escape>", lambda _event: close(False))
+        buttons = tk.Frame(frame)
+        buttons.pack(fill="x")
+        tk.Button(buttons, text=action, command=lambda: close(True)).pack(side="left")
+        cancel = tk.Button(buttons, text="Cancel", width=8, command=lambda: close(False))
+        cancel.pack(side="right")
+        self._show_modal(window, owner, cancel)
+        return result
+
+    def _ask_finish_haul(self, label: str = "") -> Optional[str]:
+        """Ask whether a haul was reported; return reported, unreported or None."""
+        question = (
+            f'Has the haul "{label}" already been reported?'
+            if label
+            else "Has this haul already been reported?"
+        )
+        window, owner, frame = self._make_modal(
+            "Finish haul",
+            question,
+            "Yes marks it as reported.\n"
+            "No, do it anyway finishes it without the reported flag.\n"
+            "Cancel keeps it in Active hauls.",
+        )
+        result: Optional[str] = None
+
+        def close(decision: Optional[str]) -> None:
+            nonlocal result
+            result = decision
+            try:
+                window.destroy()
+            except tk.TclError:
+                pass
+
+        window.protocol("WM_DELETE_WINDOW", lambda: close(None))
+        window.bind("<Escape>", lambda _event: close(None))
+        buttons = tk.Frame(frame)
+        buttons.pack(fill="x")
+        tk.Button(buttons, text="Yes", width=8, command=lambda: close("reported")).pack(
+            side="left"
+        )
+        tk.Button(
+            buttons,
+            text="No, do it anyway",
+            command=lambda: close("unreported"),
+        ).pack(side="left", padx=(6, 0))
+        cancel = tk.Button(buttons, text="Cancel", width=8, command=lambda: close(None))
+        cancel.pack(side="right")
+        self._show_modal(window, owner, cancel)
         return result
 
     def _reset_target(self, target_id: str, label: str = "") -> None:
@@ -801,12 +847,11 @@ class PluginUI:
     def _reset_all(self) -> None:
         if not self.cmdr_key:
             return
-        parent = self.details if self.details is not None else self.panel
-        if not messagebox.askyesno(
+        if not self._confirm(
             "Finish all hauls",
-            "Move every active haul to Finished hauls?\n\nThe tonnage is not lost: "
-            "each entry can be restored from Finished hauls.",
-            parent=parent,
+            "Move every active haul to Finished hauls?",
+            "The tonnage is not lost: each entry can be restored from Finished hauls.",
+            "Finish all",
         ):
             return
         if self.store.reset_all(self.cmdr_key, now_iso()):
@@ -821,14 +866,12 @@ class PluginUI:
     def _delete_history(self, history_id: Optional[str], label: str = "") -> None:
         if not self.cmdr_key or not history_id:
             return
-        parent = self.details if self.details is not None else self.panel
         name = f'"{label}"' if label else "this entry"
-        if not messagebox.askyesno(
+        if not self._confirm(
             "Delete finished haul",
-            f"Permanently delete {name} from Finished hauls?\n\n"
-            "This cannot be undone.",
-            parent=parent,
-            default="no",
+            f"Permanently delete {name}?",
+            "This removes it from Finished hauls and cannot be undone.",
+            "Delete",
         ):
             return
         if self.store.delete_history(self.cmdr_key, str(history_id)):
@@ -840,13 +883,11 @@ class PluginUI:
         history = self._history()
         if not history:
             return
-        parent = self.details if self.details is not None else self.panel
-        if not messagebox.askyesno(
+        if not self._confirm(
             "Delete all finished hauls",
-            f"Permanently delete all {len(history)} finished hauls?\n\n"
-            "This cannot be undone.",
-            parent=parent,
-            default="no",
+            f"Permanently delete all {len(history)} finished hauls?",
+            "This clears Finished hauls and cannot be undone.",
+            "Delete all",
         ):
             return
         if self.store.clear_history(self.cmdr_key):
