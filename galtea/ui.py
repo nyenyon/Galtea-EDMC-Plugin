@@ -221,6 +221,12 @@ class PluginUI:
             row=4, column=0, sticky="ew", pady=(4, 0)
         )
 
+        # Mirror EDMC's per-plugin separator (a themed highlight frame) so the
+        # next EDMC control ("Update") is visually separate from this panel.
+        tk.Frame(frame, highlightthickness=1).grid(
+            row=5, column=0, sticky="ew", pady=(8, 6)
+        )
+
         self.panel = frame
         self.refresh()
         _apply_theme(frame)
