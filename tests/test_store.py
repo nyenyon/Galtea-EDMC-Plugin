@@ -58,10 +58,11 @@ class StoreTest(unittest.TestCase):
 
     def test_reported_target_is_archived_with_reason(self) -> None:
         self.add_carrier(1320)
+        batch_id = self.store.targets("F123")[0].id
 
         self.assertTrue(
             self.store.reset_target(
-                "F123", CARRIER["market_id"], "2026-01-02T08:00:00Z", reason="reported"
+                "F123", batch_id, "2026-01-02T08:00:00Z", reason="reported"
             )
         )
         self.assertEqual(self.store.targets("F123"), [])
@@ -69,10 +70,36 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(len(history), 1)
         self.assertEqual(history[0]["reason"], "reported")
         self.assertEqual(history[0]["target"]["tons"], 1320)
+        self.assertEqual(history[0]["target"]["id"], batch_id)
+
+    def test_same_carrier_reported_twice_creates_two_history_entries(self) -> None:
+        self.add_carrier(300, when="2026-01-01T10:00:00Z")
+        self.store.reset_target(
+            "F123",
+            self.store.targets("F123")[0].id,
+            "2026-01-01T11:00:00Z",
+            reason="reported",
+        )
+        self.add_carrier(120, when="2026-01-01T12:00:00Z")
+        self.store.reset_target(
+            "F123",
+            self.store.targets("F123")[0].id,
+            "2026-01-01T13:00:00Z",
+            reason="reported",
+        )
+
+        history = self.store.history("F123")
+        self.assertEqual([entry["target"]["tons"] for entry in history], [120, 300])
+        self.assertEqual({entry["reason"] for entry in history}, {"reported"})
+        self.assertEqual(len({entry["id"] for entry in history}), 2)
+        self.assertEqual(len({entry["target"]["id"] for entry in history}), 2)
+        self.assertEqual(
+            {entry["target"]["market_id"] for entry in history}, {CARRIER["market_id"]}
+        )
 
     def test_history_survives_restart(self) -> None:
         self.add_carrier(1320)
-        self.store.reset_target("F123", CARRIER["market_id"])
+        self.store.reset_target("F123", self.store.targets("F123")[0].id)
 
         reloaded = HaulStore(self.path)
         self.assertEqual(len(reloaded.history("F123")), 1)
@@ -80,22 +107,38 @@ class StoreTest(unittest.TestCase):
 
     def test_restore_returns_entry_and_clears_history(self) -> None:
         self.add_carrier(1320)
-        self.store.reset_target("F123", CARRIER["market_id"])
+        self.store.reset_target("F123", self.store.targets("F123")[0].id)
         history_id = self.store.history("F123")[0]["id"]
 
         self.assertTrue(self.store.restore("F123", history_id))
         self.assertEqual(self.store.total("F123"), 1320)
         self.assertEqual(self.store.history("F123"), [])
 
-    def test_restore_merges_with_existing_entry(self) -> None:
-        self.add_carrier(1320)
-        self.store.reset_target("F123", CARRIER["market_id"])
+    def test_restore_keeps_reported_batches_separate(self) -> None:
+        self.add_carrier(1320, when="2026-01-01T10:00:00Z")
+        self.store.reset_target(
+            "F123", self.store.targets("F123")[0].id, reason="reported"
+        )
         history_id = self.store.history("F123")[0]["id"]
         self.add_carrier(500, when="2026-01-03T09:00:00Z")
 
         self.assertTrue(self.store.restore("F123", history_id))
-        target = self.store.targets("F123")[0]
-        self.assertEqual(target.tons, 1820)
+        targets = self.store.targets("F123")
+        self.assertEqual(sorted(target.tons for target in targets), [500, 1320])
+        self.assertEqual(len({target.id for target in targets}), 2)
+        self.assertEqual(self.store.total("F123"), 1820)
+
+    def test_deliveries_after_restore_go_to_the_newest_batch(self) -> None:
+        self.add_carrier(1320, when="2026-01-01T10:00:00Z")
+        self.store.reset_target(
+            "F123", self.store.targets("F123")[0].id, reason="reported"
+        )
+        history_id = self.store.history("F123")[0]["id"]
+        self.add_carrier(500, when="2026-01-03T09:00:00Z")
+        self.store.restore("F123", history_id)
+
+        self.add_carrier(100, when="2026-01-04T09:00:00Z")
+        self.assertEqual(sorted(t.tons for t in self.store.targets("F123")), [600, 1320])
 
     def test_reset_all_archives_everything(self) -> None:
         self.add_carrier()
@@ -178,6 +221,55 @@ class StoreTest(unittest.TestCase):
         self.add_carrier()
         self.assertTrue(self.store.update_target("F123", CARRIER["market_id"], kind=KIND_SQUADRON))
         self.assertEqual(self.store.targets("F123")[0].kind, KIND_SQUADRON)
+
+    def test_load_migrates_old_file_to_batch_ids(self) -> None:
+        self.path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "cmdrs": {
+                        "F123": {
+                            "name": "Test",
+                            "targets": {
+                                str(CARRIER["market_id"]): {
+                                    "market_id": CARRIER["market_id"],
+                                    "name": "T3S-TIE",
+                                    "kind": KIND_FLEET,
+                                    "tons": 1320,
+                                    "first_delivery": "2026-01-01T10:00:00Z",
+                                    "last_delivery": "2026-01-01T10:00:00Z",
+                                }
+                            },
+                            "history": [
+                                {
+                                    "id": "old-entry",
+                                    "deleted_at": "2026-01-02T08:00:00Z",
+                                    "reason": "deleted",
+                                    "target": {
+                                        "market_id": 1,
+                                        "name": "Old depot",
+                                        "kind": "construction",
+                                        "tons": 10,
+                                    },
+                                }
+                            ],
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        store = HaulStore(self.path)
+        target = store.targets("F123")[0]
+        self.assertTrue(target.id)
+        self.assertEqual(store.total("F123"), 1320)
+
+        raw = json.loads(self.path.read_text(encoding="utf-8"))
+        record = raw["cmdrs"]["F123"]
+        self.assertEqual(raw["version"], 2)
+        self.assertEqual(list(record["targets"]), [target.id])
+        self.assertTrue(record["history"][0]["target"]["id"])
 
     def test_corrupt_file_is_moved_aside(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

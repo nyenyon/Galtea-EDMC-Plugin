@@ -24,7 +24,7 @@ from .model import (
     now_iso,
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 HISTORY_LIMIT = 200
 
 
@@ -53,8 +53,58 @@ class HaulStore:
         if isinstance(raw, dict) and isinstance(raw.get("cmdrs"), dict):
             raw.setdefault("version", SCHEMA_VERSION)
             self.data = raw
+            changed = self._migrate()
             if self._correct_squadron_kinds():
+                changed = True
+            if changed:
                 self.save()
+
+    def _migrate(self) -> bool:
+        """Give every target and history snapshot a unique batch id.
+
+        Older files key the targets by market id and have no batch ids.  The
+        same market id can now appear several times (after restoring a reported
+        batch), so targets are keyed by their own id instead.
+        """
+        changed = False
+        for record in (self.data.get("cmdrs") or {}).values():
+            if not isinstance(record, dict):
+                continue
+
+            targets = record.get("targets")
+            if isinstance(targets, dict):
+                for key, target in list(targets.items()):
+                    if not isinstance(target, dict):
+                        continue
+                    batch_id = str(target.get("id") or "")
+                    if not batch_id:
+                        batch_id = uuid.uuid4().hex
+                        target["id"] = batch_id
+                        changed = True
+                    if str(key) != batch_id:
+                        targets.pop(key, None)
+                        targets[batch_id] = target
+                        changed = True
+
+            for entry in record.get("history") or []:
+                if not isinstance(entry, dict):
+                    continue
+                if not entry.get("id"):
+                    entry["id"] = uuid.uuid4().hex
+                    changed = True
+                snapshot = entry.get("target")
+                if isinstance(snapshot, dict) and not snapshot.get("id"):
+                    snapshot["id"] = uuid.uuid4().hex
+                    changed = True
+
+        try:
+            version = int(self.data.get("version") or 1)
+        except (TypeError, ValueError):
+            version = 1
+        if version < SCHEMA_VERSION:
+            self.data["version"] = SCHEMA_VERSION
+            changed = True
+        return changed
 
     def _correct_squadron_kinds(self) -> bool:
         """Fix carriers stored as fleet carriers by older plugin versions.
@@ -149,6 +199,30 @@ class HaulStore:
         if changed:
             self.save()
 
+    @staticmethod
+    def _targets_for_market(
+        record: Dict[str, Any], market_id: Any
+    ) -> List[Dict[str, Any]]:
+        """All active batches for one market, newest delivery first."""
+        try:
+            wanted = int(market_id)
+        except (TypeError, ValueError):
+            return []
+
+        def belongs(target: Dict[str, Any]) -> bool:
+            try:
+                return int(target.get("market_id") or 0) == wanted
+            except (TypeError, ValueError):
+                return False
+
+        matches = [
+            target
+            for target in (record.get("targets") or {}).values()
+            if isinstance(target, dict) and belongs(target)
+        ]
+        matches.sort(key=lambda target: str(target.get("last_delivery") or ""), reverse=True)
+        return matches
+
     # -- mutations -------------------------------------------------------
 
     def add(
@@ -170,12 +244,14 @@ class HaulStore:
             return False
 
         record = self._cmdr(cmdr_key, cmdr_name)
-        key = str(int(market_id))
-        target = record["targets"].get(key)
         moment = timestamp or now_iso()
+        # Deliveries accumulate in the newest active batch for this market.
+        matches = self._targets_for_market(record, market_id)
+        target = matches[0] if matches else None
 
         if target is None:
             target = {
+                "id": uuid.uuid4().hex,
                 "market_id": int(market_id),
                 "name": name or f"Market {market_id}",
                 "kind": kind or KIND_CARRIER,
@@ -186,7 +262,7 @@ class HaulStore:
                 "first_delivery": moment,
                 "last_delivery": moment,
             }
-            record["targets"][key] = target
+            record["targets"][target["id"]] = target
 
         target["tons"] = int(target.get("tons") or 0) + tons
         target["last_delivery"] = moment
@@ -219,50 +295,60 @@ class HaulStore:
         pretty name behind a callsign.
         """
         record = self._cmdr(cmdr_key)
-        target = record["targets"].get(str(int(market_id)))
-        if target is None:
+        targets = self._targets_for_market(record, market_id)
+        if not targets:
             return False
 
         changed = False
-        if station_type and target.get("station_type") != station_type:
-            target["station_type"] = station_type
-            changed = True
-        if system and target.get("system") != system:
-            target["system"] = system
-            changed = True
-        if display_name and target.get("display_name") != display_name:
-            target["display_name"] = display_name
-            changed = True
-        if name and target.get("name") != name:
-            current = str(target.get("name") or "")
-            # Replace empty names and the generic fallback used when a
-            # contribution arrives before we ever saw the station.
-            if not current or current.startswith("Construction site "):
-                target["name"] = name
+        for target in targets:
+            if station_type and target.get("station_type") != station_type:
+                target["station_type"] = station_type
                 changed = True
-        if kind and kind != target.get("kind"):
-            current = target.get("kind")
-            # Only upgrade the vague "carrier" kind, never downgrade a known one.
-            if current in (KIND_CARRIER, None) and kind in (KIND_FLEET, KIND_SQUADRON):
-                target["kind"] = kind
+            if system and target.get("system") != system:
+                target["system"] = system
                 changed = True
-            elif current == KIND_FLEET and kind == KIND_SQUADRON:
-                # The journal reports squadron carriers as "FleetCarrier"; a
-                # squadron-bank service, a four-character callsign or
-                # CarrierType is the better evidence.
-                target["kind"] = kind
+            if display_name and target.get("display_name") != display_name:
+                target["display_name"] = display_name
                 changed = True
+            if name and target.get("name") != name:
+                current = str(target.get("name") or "")
+                # Replace empty names and the generic fallback used when a
+                # contribution arrives before we ever saw the station.
+                if not current or current.startswith("Construction site "):
+                    target["name"] = name
+                    changed = True
+            if kind and kind != target.get("kind"):
+                current = target.get("kind")
+                # Only upgrade the vague "carrier" kind, never downgrade a known one.
+                if current in (KIND_CARRIER, None) and kind in (KIND_FLEET, KIND_SQUADRON):
+                    target["kind"] = kind
+                    changed = True
+                elif current == KIND_FLEET and kind == KIND_SQUADRON:
+                    # The journal reports squadron carriers as "FleetCarrier"; a
+                    # squadron-bank service, a four-character callsign or
+                    # CarrierType is the better evidence.
+                    target["kind"] = kind
+                    changed = True
 
         if changed:
             self.save()
         return changed
 
     def reset_target(
-        self, cmdr_key: str, market_id: int, when: str = "", reason: str = "deleted"
+        self, cmdr_key: str, target_id: Any, when: str = "", reason: str = "deleted"
     ) -> bool:
-        """Delete one target and keep it in the history."""
+        """Delete one batch and keep it in the history.
+
+        ``target_id`` is the batch id.  A market id is accepted too and then
+        resolves to the most recently delivered active batch.
+        """
         record = self._cmdr(cmdr_key)
-        target = record["targets"].pop(str(int(market_id)), None)
+        target = record["targets"].pop(str(target_id), None)
+        if target is None:
+            matches = self._targets_for_market(record, target_id)
+            if matches:
+                target = matches[0]
+                record["targets"].pop(str(target.get("id")), None)
         if target is None:
             return False
         self._archive(record, target, when or now_iso(), reason)
@@ -283,7 +369,11 @@ class HaulStore:
         return removed
 
     def restore(self, cmdr_key: str, history_id: str) -> bool:
-        """Put a deleted entry back and drop it from the history."""
+        """Put a deleted entry back as its own batch and drop it from history.
+
+        A restored batch keeps its own id, so it does not merge with another
+        active batch for the same market.
+        """
         record = self._cmdr(cmdr_key)
         history = record["history"]
         for index, entry in enumerate(history):
@@ -291,11 +381,14 @@ class HaulStore:
                 continue
             history.pop(index)
             snapshot = copy.deepcopy(entry.get("target") or {})
-            key = str(snapshot.get("market_id"))
-            existing = record["targets"].get(key)
+            batch_id = str(snapshot.get("id") or "") or uuid.uuid4().hex
+            snapshot["id"] = batch_id
+            existing = record["targets"].get(batch_id)
             if existing is None:
-                record["targets"][key] = snapshot
+                record["targets"][batch_id] = snapshot
             else:
+                # The same batch is somehow still active; merge instead of
+                # dropping the restored tonnage.
                 existing["tons"] = int(existing.get("tons") or 0) + int(snapshot.get("tons") or 0)
                 first = [x for x in (existing.get("first_delivery"), snapshot.get("first_delivery")) if x]
                 last = [x for x in (existing.get("last_delivery"), snapshot.get("last_delivery")) if x]
@@ -322,16 +415,16 @@ class HaulStore:
     # -- read access -----------------------------------------------------
 
     def target_kind(self, cmdr_key: str, market_id: int) -> Optional[str]:
-        """Stored kind of one target, without building the whole list."""
-        target = self._cmdr(cmdr_key)["targets"].get(str(int(market_id)))
-        if target is None:
+        """Stored kind of the newest active batch, without building the list."""
+        targets = self._targets_for_market(self._cmdr(cmdr_key), market_id)
+        if not targets:
             return None
-        return str(target.get("kind") or "") or None
+        return str(targets[0].get("kind") or "") or None
 
     def targets(self, cmdr_key: str) -> List[Target]:
         record = self._cmdr(cmdr_key)
         items = [Target.from_dict(value) for value in record["targets"].values()]
-        items.sort(key=lambda target: (-target.tons, target.label.lower()))
+        items.sort(key=lambda target: (-target.tons, target.label.lower(), target.id))
         return items
 
     def history(self, cmdr_key: str) -> List[Dict[str, Any]]:

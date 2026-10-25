@@ -30,6 +30,12 @@ PANEL_ROWS = 3
 SETTING_DISCORD_USER = "galtea_discord_user"
 GITHUB_URL = "https://github.com/nyenyon/Galtea-EDMC-Plugin"
 
+_HISTORY_REASON_LABELS = {
+    "reported": "Reported",
+    "deleted": "Reset",
+    "reset_all": "Reset all",
+}
+
 try:  # EDMC 6 exposes the config singleton from the config package
     from config import config as _edmc_config
 except ImportError:  # older EDMC provides the getters on the module itself
@@ -73,6 +79,11 @@ def _open_url(url: str) -> None:
 def _short(text: str, limit: int = 34) -> str:
     text = str(text or "")
     return text if len(text) <= limit else text[: limit - 1] + "\u2026"
+
+
+def _reason_label(reason: Any) -> str:
+    text = str(reason or "")
+    return _HISTORY_REASON_LABELS.get(text, text or "Deleted")
 
 
 def _apply_theme(widget: tk.Misc) -> None:
@@ -292,12 +303,12 @@ class PluginUI:
         targets_box, self.target_rows, self.target_wheel = _scroll_area(outer, 220)
         targets_box.grid(row=2, column=0, sticky="nsew")
 
-        tk.Label(outer, text="History (deleted entries)").grid(
+        tk.Label(outer, text="History (reported and deleted entries)").grid(
             row=3, column=0, sticky="w", pady=(14, 2)
         )
         tk.Label(
             outer,
-            text="Deleted entries stay here so an accidental reset can be undone.",
+            text="Reported or deleted entries stay here so they can be restored.",
         ).grid(row=4, column=0, sticky="w")
         history_box, self.history_rows, self.history_wheel = _scroll_area(outer, 160)
         history_box.grid(row=5, column=0, sticky="nsew")
@@ -336,6 +347,10 @@ class PluginUI:
             _apply_theme(self.target_rows)
             return
 
+        counts: Dict[int, int] = {}
+        for target in targets:
+            counts[target.market_id] = counts.get(target.market_id, 0) + 1
+
         for target in targets:
             row = tk.Frame(self.target_rows)
             row.pack(fill="x", pady=1)
@@ -360,8 +375,17 @@ class PluginUI:
                 row,
                 text="Reset",
                 width=6,
-                command=lambda mid=target.market_id: self._reset_target(mid),
+                command=lambda tid=target.id: self._reset_target(tid),
             ).grid(row=0, column=4, sticky="e")
+
+            # Only ambiguous when a restored batch runs next to a newer one.
+            if counts.get(target.market_id, 0) > 1:
+                tk.Label(
+                    row,
+                    text=f"Batch {target.id[:8]}",
+                    anchor="w",
+                    font="TkSmallCaptionFont",
+                ).grid(row=1, column=0, sticky="w")
 
         _bind_wheel(self.target_rows, self.target_wheel)
         _apply_theme(self.target_rows)
@@ -409,6 +433,14 @@ class PluginUI:
                 command=lambda hid=entry.get("id"): self._restore(hid),
             ).grid(row=0, column=4, sticky="e")
 
+            detail = _reason_label(entry.get("reason"))
+            short_id = str(target.id or "")[:8]
+            if short_id:
+                detail = f"{detail} \u00b7 {short_id}"
+            tk.Label(row, text=detail, anchor="w", font="TkSmallCaptionFont").grid(
+                row=1, column=0, columnspan=5, sticky="w"
+            )
+
         _bind_wheel(self.history_rows, self.history_wheel)
         _apply_theme(self.history_rows)
 
@@ -433,9 +465,16 @@ class PluginUI:
         frame.pack(fill="both", expand=True)
         tk.Label(frame, text=f"Report {target.label}", font="TkHeadingFont").pack(anchor="w")
         tk.Label(frame, text=f"{format_number(target.tons)} t delivered").pack(
-            anchor="w", pady=(2, 10)
+            anchor="w", pady=(2, 2)
         )
-        tk.Label(frame, text="Paste this command into Discord or Sicord:").pack(anchor="w")
+        siblings = sum(1 for item in self._targets() if item.market_id == target.market_id)
+        if siblings > 1:
+            tk.Label(frame, text=f"Batch {target.id[:8]}", font="TkSmallCaptionFont").pack(
+                anchor="w"
+            )
+        tk.Label(frame, text="Paste this command into Discord or Sicord:").pack(
+            anchor="w", pady=(8, 0)
+        )
 
         entry = tk.Entry(frame, width=64)
         entry.insert(0, command)
@@ -489,9 +528,7 @@ class PluginUI:
         """Archive a target after its tonnage has been reported."""
         if not self.cmdr_key:
             return
-        if self.store.reset_target(
-            self.cmdr_key, target.market_id, now_iso(), reason="reported"
-        ):
+        if self.store.reset_target(self.cmdr_key, target.id, now_iso(), reason="reported"):
             self.refresh()
         self._close_report()
 
@@ -526,10 +563,10 @@ class PluginUI:
 
     # -- actions ---------------------------------------------------------
 
-    def _reset_target(self, market_id: int) -> None:
+    def _reset_target(self, target_id: str) -> None:
         if not self.cmdr_key:
             return
-        if self.store.reset_target(self.cmdr_key, market_id, now_iso()):
+        if self.store.reset_target(self.cmdr_key, target_id, now_iso()):
             self.refresh()
 
     def _reset_all(self) -> None:

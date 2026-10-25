@@ -98,6 +98,9 @@ class Target:
     tons: int = 0
     first_delivery: str = ""
     last_delivery: str = ""
+    # Unique id of this delivery batch.  The same market can have several
+    # active batches after a reported one has been restored.
+    id: str = ""
 
     @property
     def label(self) -> str:
@@ -129,6 +132,7 @@ class Target:
             "tons": int(self.tons),
             "first_delivery": self.first_delivery,
             "last_delivery": self.last_delivery,
+            "id": self.id,
         }
 
     @classmethod
@@ -143,4 +147,5 @@ class Target:
             tons=int(data.get("tons") or 0),
             first_delivery=str(data.get("first_delivery") or ""),
             last_delivery=str(data.get("last_delivery") or ""),
+            id=str(data.get("id") or ""),
         )

@@ -12,12 +12,21 @@ Versions match `VERSION` in `load.py`.
 - **Reported** button in the "Report delivery" window: once the tonnage has
   been reported, it removes the target from the running totals and moves it to
   the history, where it can be restored.
+- The history now shows why an entry was archived (**Reported**, **Reset** or
+  **Reset all**) together with a short batch ID.
+- If restoring a report leaves several active batches for the same carrier,
+  the details window and the report window show each batch's short ID so they
+  can be told apart.
 - The report window shows a reminder to set your own Discord handle while the
   placeholder `@yourdiscordname` is still in use.
 - The plugin settings tab shows the version and links to the GitHub repository.
 
 ### Changed
 
+- Every target now has a unique batch ID. Reporting the same carrier again
+  creates a separate history entry, and restoring a reported batch keeps it
+  separate from a newer batch instead of merging the tonnage. Existing data
+  files are migrated automatically.
 - The default Discord handle used by the **Report** command is now the
   placeholder `@yourdiscordname` instead of `@nyenyon`, so tonnage is not
   accidentally credited to the wrong user. A handle entered in the plugin
