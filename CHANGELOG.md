@@ -35,6 +35,9 @@ Versions match `VERSION` in `load.py`.
 - The details window now has **Active hauls** and **Finished hauls** tabs. The
   finished list is only shown when its tab is selected, and the tab label shows
   the number of entries.
+- The plugin panel is separated from EDMC's **Update** button by a themed
+  divider, and the settings tab was rebuilt to stay usable when resized while
+  keeping EDMC's default colours.
 - The target button is now labelled **Finish haul** (and **Finish all hauls…**
   in the settings) instead of **Reset**; entries still move to **Finished
   hauls** and can be restored.
