@@ -8,7 +8,12 @@ import unittest
 from pathlib import Path
 
 from galtea.model import KIND_CARRIER, KIND_FLEET, KIND_SQUADRON
-from galtea.store import HISTORY_LIMIT, HaulStore
+from galtea.store import (
+    CACHE_SCHEMA_VERSION,
+    HISTORY_LIMIT,
+    SCHEMA_VERSION,
+    HaulStore,
+)
 
 CARRIER = dict(
     market_id=3709409280,
@@ -30,6 +35,7 @@ class StoreTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.path = Path(self.tempdir.name) / "haul.json"
+        self.cache_path = self.path.with_name("carrier_cache.json")
         self.store = HaulStore(self.path)
 
     def tearDown(self) -> None:
@@ -256,9 +262,91 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(
             self.store.carrier_name("F123", 3709409280)["name"], "Test Carrier"
         )
-        raw = json.loads(self.path.read_text(encoding="utf-8"))
+        raw = json.loads(self.cache_path.read_text(encoding="utf-8"))
         carriers = raw["cmdrs"]["F123"]["carriers"]
         self.assertEqual(len(carriers), 1)
+
+    def test_carrier_cache_is_stored_separately(self) -> None:
+        self.add_carrier()
+        self.store.remember_carrier("F123", 3709409280, "Test Carrier", "T3S-TIE")
+
+        hauls = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertNotIn("carriers", hauls["cmdrs"]["F123"])
+
+        cache = json.loads(self.cache_path.read_text(encoding="utf-8"))
+        self.assertEqual(cache["version"], CACHE_SCHEMA_VERSION)
+        self.assertEqual(
+            cache["cmdrs"]["F123"]["carriers"]["3709409280"]["name"],
+            "Test Carrier",
+        )
+
+    def test_carrier_cache_path_is_configurable(self) -> None:
+        cache_path = Path(self.tempdir.name) / "names.json"
+        store = HaulStore(self.path, cache_path)
+        store.remember_carrier("F123", 3709409280, "Test Carrier", "T3S-TIE")
+
+        self.assertTrue(cache_path.exists())
+        self.assertFalse(self.cache_path.exists())
+
+    def test_carrier_cache_does_not_create_a_haul_record(self) -> None:
+        self.store.remember_carrier("F999", 1, "Other Carrier", "X9K-WTW")
+
+        self.assertTrue(self.cache_path.exists())
+        self.assertFalse(self.path.exists())
+        self.assertEqual(self.store.cmdr_name("F999"), "")
+
+    def test_legacy_carrier_cache_is_migrated(self) -> None:
+        self.path.write_text(
+            json.dumps(
+                {
+                    "version": 2,
+                    "cmdrs": {
+                        "F123": {
+                            "name": "Test",
+                            "targets": {},
+                            "history": [],
+                            "carriers": {
+                                "3709409280": {
+                                    "market_id": 3709409280,
+                                    "name": "Test Carrier",
+                                    "callsign": "T3S-TIE",
+                                }
+                            },
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        store = HaulStore(self.path)
+        self.assertEqual(
+            store.carrier_name("F123", 3709409280)["name"], "Test Carrier"
+        )
+
+        hauls = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(hauls["version"], SCHEMA_VERSION)
+        self.assertNotIn("carriers", hauls["cmdrs"]["F123"])
+
+        cache = json.loads(self.cache_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            cache["cmdrs"]["F123"]["carriers"]["3709409280"]["name"],
+            "Test Carrier",
+        )
+
+        reloaded = HaulStore(self.path)
+        self.assertEqual(
+            reloaded.carrier_name("F123", callsign="t3s-tie")["name"],
+            "Test Carrier",
+        )
+
+    def test_corrupt_carrier_cache_is_moved_aside(self) -> None:
+        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        self.cache_path.write_text("{not json", encoding="utf-8")
+
+        store = HaulStore(self.path)
+        self.assertEqual(store.carrier_name("F123"), {})
+        self.assertTrue(self.cache_path.with_suffix(".corrupt").exists())
 
     def test_carrier_name_without_identifier_is_ignored(self) -> None:
         self.assertEqual(self.store.remember_carrier("F123", None, "Test Carrier"), {})
@@ -331,7 +419,7 @@ class StoreTest(unittest.TestCase):
 
         raw = json.loads(self.path.read_text(encoding="utf-8"))
         record = raw["cmdrs"]["F123"]
-        self.assertEqual(raw["version"], 2)
+        self.assertEqual(raw["version"], SCHEMA_VERSION)
         self.assertEqual(list(record["targets"]), [target.id])
         self.assertTrue(record["history"][0]["target"]["id"])
 

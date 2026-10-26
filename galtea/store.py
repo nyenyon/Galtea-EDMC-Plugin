@@ -3,7 +3,8 @@
 One JSON document keeps every commander on this machine separate.  Each
 commander owns a set of targets (carrier or construction site) and a history
 of entries that were deleted or reset, so an accidental delete can be
-inspected and undone.
+inspected and undone.  Carrier display names live in a separate cache file so
+learning a name does not rewrite the haul totals.
 """
 
 from __future__ import annotations
@@ -24,7 +25,8 @@ from .model import (
     now_iso,
 )
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+CACHE_SCHEMA_VERSION = 1
 HISTORY_LIMIT = 200
 CARRIER_LIMIT = 500
 
@@ -39,24 +41,30 @@ def _as_int(value: Any) -> int:
 class HaulStore:
     """Load, mutate and persist the haul totals."""
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, cache_path: Optional[Path] = None):
         self.path = Path(path)
+        self.cache_path = (
+            Path(cache_path) if cache_path else self.path.with_name("carrier_cache.json")
+        )
         self.data: Dict[str, Any] = {"version": SCHEMA_VERSION, "cmdrs": {}}
+        self.carrier_data: Dict[str, Any] = {
+            "version": CACHE_SCHEMA_VERSION,
+            "cmdrs": {},
+        }
         self.load()
 
     # -- persistence -----------------------------------------------------
 
     def load(self) -> None:
+        self._load_cache()
+        self.data = {"version": SCHEMA_VERSION, "cmdrs": {}}
         if not self.path.exists():
             return
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             # Keep the broken file around for inspection but start clean.
-            try:
-                self.path.replace(self.path.with_suffix(".corrupt"))
-            except OSError:
-                pass
+            self._move_corrupt(self.path)
             return
         if isinstance(raw, dict) and isinstance(raw.get("cmdrs"), dict):
             raw.setdefault("version", SCHEMA_VERSION)
@@ -64,8 +72,77 @@ class HaulStore:
             changed = self._migrate()
             if self._correct_squadron_kinds():
                 changed = True
+            if self._extract_carriers():
+                changed = True
             if changed:
                 self.save()
+
+    def _load_cache(self) -> None:
+        """Load the separate carrier display-name cache."""
+        self.carrier_data = {"version": CACHE_SCHEMA_VERSION, "cmdrs": {}}
+        if not self.cache_path.exists():
+            return
+        try:
+            raw = json.loads(self.cache_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            self._move_corrupt(self.cache_path)
+            return
+        if not isinstance(raw, dict) or not isinstance(raw.get("cmdrs"), dict):
+            return
+        raw.setdefault("version", CACHE_SCHEMA_VERSION)
+        self.carrier_data = raw
+        try:
+            version = int(self.carrier_data.get("version") or 1)
+        except (TypeError, ValueError):
+            version = 1
+        if version < CACHE_SCHEMA_VERSION:
+            self.carrier_data["version"] = CACHE_SCHEMA_VERSION
+            self.save_cache()
+
+    @staticmethod
+    def _move_corrupt(path: Path) -> None:
+        try:
+            path.replace(path.with_suffix(".corrupt"))
+        except OSError:
+            pass
+
+    def _extract_carriers(self) -> bool:
+        """Move carrier names embedded by older versions into the cache."""
+        changed = False
+        cache_changed = False
+        for cmdr_key, record in (self.data.get("cmdrs") or {}).items():
+            if not isinstance(record, dict) or "carriers" not in record:
+                continue
+            legacy = record.pop("carriers")
+            changed = True
+            if not isinstance(legacy, dict):
+                continue
+
+            carriers = self._carriers(str(cmdr_key), create=True)
+            for entry in legacy.values():
+                if not isinstance(entry, dict):
+                    continue
+                market_id = _as_int(entry.get("market_id"))
+                callsign = str(entry.get("callsign") or "").strip()
+                if not market_id and not callsign:
+                    continue
+                existing = self._find_carrier(carriers, market_id, callsign)
+                if existing is not None:
+                    # The cache is authoritative, but an old entry may be the
+                    # only one that knows the pretty name.
+                    if not existing.get("name") and entry.get("name"):
+                        existing["name"] = str(entry.get("name"))
+                        cache_changed = True
+                    continue
+                key = str(market_id) if market_id else callsign.upper()
+                while key in carriers:
+                    key += "_"
+                carriers[key] = dict(entry)
+                cache_changed = True
+
+        if cache_changed:
+            self.save_cache()
+        return changed
 
     def _migrate(self) -> bool:
         """Give every target and history snapshot a unique batch id.
@@ -135,15 +212,21 @@ class HaulStore:
                     changed = True
         return changed
 
-    def save(self) -> None:
+    def _write(self, path: Path, data: Dict[str, Any]) -> None:
         try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = self.path.with_suffix(".tmp")
-            temporary.write_text(json.dumps(self.data, indent=2, sort_keys=True), encoding="utf-8")
-            os.replace(temporary, self.path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+            os.replace(temporary, path)
         except OSError:
             # Never let a failing disk stop the tracker from working in memory.
             pass
+
+    def save(self) -> None:
+        self._write(self.path, self.data)
+
+    def save_cache(self) -> None:
+        self._write(self.cache_path, self.carrier_data)
 
     # -- commander records ----------------------------------------------
 
@@ -158,8 +241,6 @@ class HaulStore:
             record["name"] = cmdr_name
         record.setdefault("targets", {})
         record.setdefault("history", [])
-        if not isinstance(record.get("carriers"), dict):
-            record["carriers"] = {}
         return record
 
     def cmdr_name(self, cmdr_key: str) -> str:
@@ -211,15 +292,38 @@ class HaulStore:
 
     # -- carrier names ---------------------------------------------------
 
-    def carrier_name(
-        self, cmdr_key: str, market_id: Optional[int] = None, callsign: str = ""
-    ) -> Dict[str, str]:
-        """Best known display name for a carrier, by market id or callsign."""
-        record = self._cmdr(cmdr_key)
+    def _carriers(self, cmdr_key: str, create: bool = False) -> Dict[str, Any]:
+        """Carrier cache entries for one commander."""
+        key = str(cmdr_key or "unknown")
+        commanders = self.carrier_data.get("cmdrs")
+        if not isinstance(commanders, dict):
+            if not create:
+                return {}
+            commanders = {}
+            self.carrier_data["cmdrs"] = commanders
+
+        record = commanders.get(key)
+        if not isinstance(record, dict):
+            if not create:
+                return {}
+            record = {}
+            commanders[key] = record
+
+        carriers = record.get("carriers")
+        if not isinstance(carriers, dict):
+            if not create:
+                return {}
+            carriers = {}
+            record["carriers"] = carriers
+        return carriers
+
+    @staticmethod
+    def _find_carrier(
+        carriers: Dict[str, Any], market_id: Optional[int], callsign: str
+    ) -> Optional[Dict[str, Any]]:
         wanted_id = _as_int(market_id)
         wanted_callsign = str(callsign or "").strip().upper()
-
-        for entry in (record.get("carriers") or {}).values():
+        for entry in carriers.values():
             if not isinstance(entry, dict):
                 continue
             entry_id = _as_int(entry.get("market_id"))
@@ -227,11 +331,20 @@ class HaulStore:
             if (wanted_id and entry_id == wanted_id) or (
                 wanted_callsign and entry_callsign == wanted_callsign
             ):
-                return {
-                    "name": str(entry.get("name") or ""),
-                    "callsign": str(entry.get("callsign") or ""),
-                }
-        return {}
+                return entry
+        return None
+
+    def carrier_name(
+        self, cmdr_key: str, market_id: Optional[int] = None, callsign: str = ""
+    ) -> Dict[str, str]:
+        """Best known display name for a carrier, by market id or callsign."""
+        entry = self._find_carrier(self._carriers(cmdr_key), market_id, callsign)
+        if entry is None:
+            return {}
+        return {
+            "name": str(entry.get("name") or ""),
+            "callsign": str(entry.get("callsign") or ""),
+        }
 
     def remember_carrier(
         self,
@@ -240,7 +353,7 @@ class HaulStore:
         name: str,
         callsign: str = "",
     ) -> Dict[str, Any]:
-        """Persist a carrier display name and return the stored record."""
+        """Persist a carrier display name in the cache and return the record."""
         name = str(name or "").strip()
         if not name:
             return {}
@@ -249,20 +362,8 @@ class HaulStore:
         if not wanted_id and not wanted_callsign:
             return {}
 
-        record = self._cmdr(cmdr_key)
-        carriers = record["carriers"]
-
-        entry: Optional[Dict[str, Any]] = None
-        for existing in carriers.values():
-            if not isinstance(existing, dict):
-                continue
-            existing_id = _as_int(existing.get("market_id"))
-            existing_callsign = str(existing.get("callsign") or "").strip().upper()
-            if (wanted_id and existing_id == wanted_id) or (
-                wanted_callsign and existing_callsign == wanted_callsign.upper()
-            ):
-                entry = existing
-                break
+        carriers = self._carriers(cmdr_key, create=True)
+        entry = self._find_carrier(carriers, wanted_id, wanted_callsign)
 
         changed = False
         if entry is None:
@@ -286,7 +387,7 @@ class HaulStore:
             changed = True
 
         if changed:
-            self.save()
+            self.save_cache()
         return {
             "market_id": _as_int(entry.get("market_id")),
             "callsign": str(entry.get("callsign") or ""),

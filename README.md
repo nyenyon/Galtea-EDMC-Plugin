@@ -80,9 +80,9 @@ The plugin adds a **Galtea Haul Tracker** tab to EDMC's settings:
 - **Finish all hauls…** – applies the same three-way reported choice as the **Finish all hauls** action in the details window.
 - The footer shows the plugin version and links to the GitHub repository.
 
-## Data file
+## Data files
 
-Totals are stored in `data/haul_tracker.json` inside the plugin folder. The file has a schema version; older data files are migrated automatically, with each target receiving a unique batch id. The file also caches carrier display names per commander. A corrupt file is moved to `haul_tracker.corrupt` and tracking starts fresh.
+Totals are stored in `data/haul_tracker.json`; carrier display names are cached separately in `data/carrier_cache.json`. Both live inside the plugin folder and have a schema version, so older files are migrated automatically. `haul_tracker.json` keys each target by a unique batch id. A corrupt file is moved to `<name>.corrupt` and the affected data starts fresh.
 
 > Note: `data/` is local and git-ignored, so it is not part of the repository or a release archive. Replacing the plugin folder (deleting the old one and copying the new one) removes it; updating with `git pull` or copying files over the existing folder keeps it. Back it up if that matters.
 

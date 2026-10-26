@@ -5,6 +5,14 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
+## [Unreleased]
+
+### Changed
+
+- Carrier display names are cached in `data/carrier_cache.json` instead of
+  inside `data/haul_tracker.json`, so updating a name no longer rewrites the
+  haul totals. Existing embedded caches are migrated automatically.
+
 ## [0.5.0] - 2026-10-25
 
 ### Added
