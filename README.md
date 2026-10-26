@@ -9,27 +9,27 @@
 > **Note:** This plugin was created entirely with AI agents. Code, tests and
 > documentation were generated and reviewed by them.
 
-An [EDMarketConnector](https://github.com/EDCD/EDMarketConnector) plugin built for [Project Galtea](https://projectgaltea.org), the community-driven colonisation effort in Elite Dangerous. It counts the tonnage you sell at **fleet carriers** and **squadron carriers**, and the commodities you deliver to **construction sites** (space and planetary), with running totals per target, and prepares the prefilled `/addscore` command for the project's Discord/Sicord.
+An [EDMarketConnector](https://github.com/EDCD/EDMarketConnector) plugin for [Project Galtea](https://projectgaltea.org). It counts tonnage sold at **fleet carriers** and **squadron carriers** and commodities delivered to **construction sites** (space and planetary), and generates the prefilled `/addscore` command for the project's Discord/Sicord.
 
 ## Project Galtea
 
-[Project Galtea](https://projectgaltea.org) is a community-driven Elite Dangerous colonisation initiative building a resupply bridge into the Arcadian Stream to establish a thriving frontier. This plugin keeps each commander's hauling totals for the project and prepares the report command for its Discord/Sicord.
+[Project Galtea](https://projectgaltea.org) is a community-driven Elite Dangerous colonisation initiative building a resupply bridge into the Arcadian Stream to establish a thriving frontier.
 
 ## What it is for
 
-Hauling for Project Galtea involves two recurring tasks: keeping track of how much you have delivered, and reporting that tonnage in Discord.
+The plugin has two jobs:
 
-- **Count deliveries automatically.** The plugin follows EDMC's journal while you play. Sales at fleet and squadron carriers and contributions to construction sites are added to the matching target, with a running total per carrier or site and per commander. There is no manual adding up of cargo, and the totals survive EDMC restarts.
-- **Prepare the Discord report.** When a batch is ready, the target's **Report** window contains the finished `/addscore` command with your handle, the current tonnage and the target label, e.g.:
+- **Count deliveries automatically.** It follows EDMC's journal while you play. Sales at fleet and squadron carriers and contributions to construction sites are added to the matching target with a running total, so there is no manual adding up of cargo.
+- **Prepare the Discord report.** When you are ready to report, the target's **Report** window contains the finished `/addscore` command with your handle, the current tonnage and the target label:
 
   ```
   /addscore user:@nyenyon points:2372 comment:[PJGT]PANDA BEAR (B6W-34K)
   ```
 
-  **Copy** puts it on the clipboard; paste it into the Galtea Discord/Sicord and press **Reported** in the plugin. This avoids typos in the handle, tonnage or carrier name and keeps the report consistent with the tracker.
+  **Copy** puts it on the clipboard; paste it into the Galtea Discord/Sicord. This avoids typos in the handle, tonnage or carrier name and keeps the report consistent with the tracker.
 - **Nothing is posted automatically.** The plugin only prepares the command; you decide when and where to send it.
 
-## What it tracks
+### What is counted
 
 | You sell at | Journal event | Counted |
 |---|---|---|
@@ -38,7 +38,7 @@ Hauling for Project Galtea involves two recurring tasks: keeping track of how mu
 | Construction site (space / planet / colonisation ship) | `ColonisationContribution` | yes, all delivered commodities |
 | Any other station | `MarketSell` | no |
 
-For each target only the **summed tonnage** is tracked — there is no per-commodity breakdown. Totals accumulate per target and survive EDMC restarts. Commanders on the same machine are tracked separately.
+Only the **summed tonnage** per target is tracked — there is no per-commodity breakdown. Totals persist across EDMC restarts, and commanders on the same machine are tracked separately.
 
 Construction sites never emit `MarketSell` for deliveries, so exactly one event type is used per target — no double counting.
 
@@ -54,21 +54,13 @@ Total: 3,940 t
 [ Details ]
 ```
 
-The details window has **Active hauls (N)** and **Finished hauls (N)** tabs, both showing their entry count. **Active hauls** is shown first and lists every target with its own **Report** and **Finish haul** buttons. **Finish haul** asks whether the haul was already reported: **Yes** moves it to **Finished hauls** and marks it as reported, **No, do it anyway** moves it without the reported flag, and **Cancel** keeps it active. The header action on this tab is **Finish all hauls**; it uses the same three-way choice for every active haul: **Yes** marks them all as reported, **No, do it anyway** finishes them without the flag, and **Cancel** keeps them active. The **Finished hauls** tab lists name, type, tonnage, whether the entry was reported, and the finish time, with **Restore** and **Delete** buttons for each entry. Its header action is **Delete all**, which clears the whole list. All delete actions are permanent and ask for confirmation first.
+The details window has **Active hauls (N)** and **Finished hauls (N)** tabs, both showing their entry count.
 
-**Report** shows the Project Galtea Discord/Sicord macro for that target in a copyable field:
+**Active hauls** is shown first and lists every target with its own **Report** and **Finish haul** buttons. **Finish haul** asks whether the haul was already reported: **Yes** archives it as reported, **No, do it anyway** archives it without the flag, and **Cancel** keeps it active. Unreported tonnage is therefore never archived silently. The header action **Finish all hauls** applies the same choice to every active haul.
 
-```
-/addscore user:@yourdiscordname points:2372 comment:[PJGT]PANDA BEAR (B6W-34K)
-```
+**Report** opens the prefilled Project Galtea command shown above for that target. `comment:` is the target as shown in the list — the carrier name with its callsign, or the construction site being built — and `user:` comes from the plugin settings. After you post the command, **Reported** archives the haul as reported; if **Copy** was not pressed first, it asks for confirmation. Every report is stored as its own batch with a unique ID, so reporting the same carrier again later creates a separate entry.
 
-`comment:` is the target as shown in the list: the carrier name with its callsign, or the construction site being built. The Discord handle is configurable in the plugin preferences; the default is the placeholder `@yourdiscordname`, so no real user is credited by accident. The configured handle is stored in EDMC's configuration and persists across restarts. While the placeholder is still in use, the report window shows a reminder to change it in the plugin preferences.
-
-Once the tonnage has been reported, the **Reported** button in the same window finishes the target: it disappears from the running totals and moves to **Finished hauls**, just like **Finish haul**. It can be restored from there if needed. If **Copy** was not pressed first, a confirmation asks whether the delivery was really reported.
-
-Every report is stored as its own batch with a unique ID. Reporting the same carrier again later creates a separate entry in **Finished hauls**. If you restore an older batch while the same carrier already has a newer one, both stay separate and new deliveries go to the newest batch. In that case the details window and the report window show the short batch IDs so you can tell the entries apart.
-
-**Finish haul** lets you finish a haul with or without the reported flag, so unreported tonnage is never archived silently. The **Finished hauls** tab keeps the last 200 entries. Deleting an entry from **Finished hauls**, or using **Delete all**, is permanent and cannot be undone; both actions ask for confirmation first.
+**Finished hauls** lists name, type, tonnage, reported flag and finish time, with **Restore** and **Delete** buttons for each entry; **Delete all** clears the whole list. The tab keeps the last 200 entries. Restoring a batch reinserts it as its own entry: if the same carrier already has a newer active batch, both stay separate and new deliveries go to the newest. In that case the details and report windows show the short batch IDs so you can tell the entries apart. All delete actions are permanent and ask for confirmation first.
 
 ## Install
 
@@ -84,19 +76,19 @@ The plugin needs no third-party packages and makes no network requests.
 
 The plugin adds a **Galtea Haul Tracker** tab to EDMC's settings:
 
-- **Discord user for the Report command** – the Project Galtea Discord handle used as `user:@name` in the `/addscore` command. The default is the placeholder `@yourdiscordname`; set your own handle before reporting. It is stored in EDMC's configuration and survives restarts.
-- **Finish all hauls…** – asks whether the active hauls were reported, then moves them to **Finished hauls** (with or without the Reported flag).
+- **Discord user for the Report command** – the handle used as `user:@name` in the `/addscore` command. The default is the placeholder `@yourdiscordname`, so no real user is credited by accident; set your own handle before reporting. The handle is stored in EDMC's configuration, and the report window reminds you while the placeholder is still in use.
+- **Finish all hauls…** – applies the same three-way reported choice as the **Finish all hauls** action in the details window.
 - The footer shows the plugin version and links to the GitHub repository.
 
 ## Data file
 
-Totals are stored in `data/haul_tracker.json` inside the plugin folder. The file has a schema version; older data files are migrated automatically, with each target receiving a unique batch id. The file also caches carrier display names per commander, so learned names survive restarts. A corrupt file is moved to `haul_tracker.corrupt` and tracking starts fresh.
+Totals are stored in `data/haul_tracker.json` inside the plugin folder. The file has a schema version; older data files are migrated automatically, with each target receiving a unique batch id. The file also caches carrier display names per commander. A corrupt file is moved to `haul_tracker.corrupt` and tracking starts fresh.
 
 > Note: `data/` is local and git-ignored, so it is not part of the repository or a release archive. Replacing the plugin folder (deleting the old one and copying the new one) removes it; updating with `git pull` or copying files over the existing folder keeps it. Back it up if that matters.
 
 ## Good to know
 
-- Carrier names: the journal only knows a carrier's **callsign** (e.g. `T3S-TIE` for fleet carriers, `0822` for squadron carriers) when you dock. The pretty name is read from `SupercruiseDestinationDrop` (also when it contains only the name, a localized variant, or no `MarketID`) and from `CarrierStats`/`CarrierNameChanged` for your own carrier; then the display becomes `Name (CALLSIGN)`. Names are cached per commander in the data file, so a carrier you have visited before is shown by name immediately. If the game reports only the callsign on a first visit, the name appears as soon as the journal provides it.
+- Carrier names: the journal only knows a carrier's **callsign** (e.g. `T3S-TIE` for fleet carriers, `0822` for squadron carriers) when you dock. The pretty name is read from `SupercruiseDestinationDrop` (also when it contains only the name, a localized variant, or no `MarketID`) and from `CarrierStats`/`CarrierNameChanged` for your own carrier; then the display becomes `Name (CALLSIGN)`. Names are cached per commander, so a carrier you have visited before is shown by name immediately. If the game reports only the callsign on a first visit, the name appears as soon as the journal provides it.
 - Squadron carriers are sometimes written as `StationType: "FleetCarrier"` in journals. The plugin recognises them by the `squadronBank` station service or by the four-character callsign, so they are labelled **Squadron carrier**.
 - Construction sites are named `Orbital Construction Site: <name>` / `Planetary Construction Site: <name>` in the journal; the display shows only `<name>`, the station that is being built.
 - Startup: EDMC only forwards journal events while the game is running. The plugin remembers the last active commander, so the stored totals are visible immediately after restarting EDMC; the display switches as soon as the journal reports a different commander.
@@ -111,7 +103,7 @@ python3 -m unittest discover -s tests -v
 python3 -m compileall -q load.py galtea tests
 ```
 
-No dependencies; the tests use the standard library only.
+The tests use the standard library only.
 
 ## Changelog
 
