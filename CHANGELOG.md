@@ -5,6 +5,17 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
+## [0.6.0] - 2026-10-26
+
+### Added
+
+- Optional update check for new GitHub releases. It is off by default and can
+  be enabled in the plugin settings. The check runs in the background, only
+  fetches release metadata, and fails silently.
+- When a newer release exists, the details window shows a small link to the
+  GitHub release at the bottom. The plugin never downloads or installs an
+  update automatically.
+
 ## [0.5.1] - 2026-10-26
 
 ### Changed

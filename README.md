@@ -62,6 +62,8 @@ The details window has **Active hauls (N)** and **Finished hauls (N)** tabs, bot
 
 **Finished hauls** lists name, type, tonnage, reported flag and finish time, with **Restore** and **Delete** buttons for each entry; **Delete all** clears the whole list. The tab keeps the last 200 entries. Restoring a batch reinserts it as its own entry: if the same carrier already has a newer active batch, both stay separate and new deliveries go to the newest. In that case the details and report windows show the short batch IDs so you can tell the entries apart. All delete actions are permanent and ask for confirmation first.
 
+When the optional update check is enabled and a newer release exists, a small link to the GitHub release appears at the bottom of the details window.
+
 ## Install
 
 1. Copy this folder into your EDMC plugins directory:
@@ -70,13 +72,14 @@ The details window has **Active hauls (N)** and **Finished hauls (N)** tabs, bot
    - Linux: `~/.local/share/EDMarketConnector/plugins/Galtea-Haul-Tracker` (or `$XDG_DATA_HOME/EDMarketConnector/plugins/…`)
 2. Restart EDMC.
 
-The plugin needs no third-party packages and makes no network requests.
+The plugin needs no third-party packages. It makes no network requests unless you enable the optional update check.
 
 ## Settings
 
 The plugin adds a **Galtea Haul Tracker** tab to EDMC's settings:
 
 - **Discord user for the Report command** – the handle used as `user:@name` in the `/addscore` command. The default is the placeholder `@yourdiscordname`, so no real user is credited by accident; set your own handle before reporting. The handle is stored in EDMC's configuration, and the report window reminds you while the placeholder is still in use.
+- **Check GitHub for new versions** – optional and off by default. When enabled, the plugin checks the latest GitHub release in the background on startup and then at most once a day while EDMC is running, and shows a small link at the bottom of the details window if a newer version exists. Only release metadata is fetched; no commander or haul data is sent. The plugin never downloads or installs updates automatically.
 - **Finish all hauls…** – applies the same three-way reported choice as the **Finish all hauls** action in the details window.
 - The footer shows the plugin version and links to the GitHub repository.
 

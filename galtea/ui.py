@@ -7,6 +7,8 @@ styling is not applied to plugin widgets.
 
 from __future__ import annotations
 
+import queue
+import threading
 import tkinter as tk
 import webbrowser
 from tkinter import font as tkfont
@@ -25,9 +27,14 @@ from .model import (
     now_iso,
 )
 from .store import HaulStore
+from .update import ReleaseInfo, fetch_latest_release, is_newer
 
 PANEL_ROWS = 3
 SETTING_DISCORD_USER = "galtea_discord_user"
+SETTING_UPDATE_CHECK = "galtea_update_check"
+UPDATE_CHECK_DEFAULT = "0"
+UPDATE_CHECK_DELAY_MS = 2500
+UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
 GITHUB_URL = "https://github.com/nyenyon/Galtea-EDMC-Plugin"
 
 try:  # EDMC 6 exposes the config singleton from the config package
@@ -189,8 +196,17 @@ class PluginUI:
         self.report_window: Optional[tk.Toplevel] = None
         self.report_copied = False
         self.discord_user_var: Optional[tk.StringVar] = None
+        self.update_check_var: Optional[tk.BooleanVar] = None
         self.link_font: Optional[tkfont.Font] = None
         self._panel_fonts: Dict[str, tkfont.Font] = {}
+
+        self.update_info: Optional[ReleaseInfo] = None
+        self.details_update: Optional[tk.Frame] = None
+        self.details_update_label: Optional[tk.Label] = None
+        self.update_queue: queue.Queue = queue.Queue()
+        self.update_thread: Optional[threading.Thread] = None
+        self.update_check_after_id: Optional[str] = None
+        self._closed = False
 
     # -- helpers ---------------------------------------------------------
 
@@ -214,6 +230,129 @@ class PluginUI:
             normalize_discord_user(_get_setting(SETTING_DISCORD_USER, DEFAULT_DISCORD_USER))
             or DEFAULT_DISCORD_USER
         )
+
+    def _get_link_font(self) -> tkfont.Font:
+        if self.link_font is None:
+            self.link_font = tkfont.nametofont("TkDefaultFont").copy()
+            self.link_font.configure(underline=True)
+        return self.link_font
+
+    def _update_check_enabled(self) -> bool:
+        value = str(
+            _get_setting(SETTING_UPDATE_CHECK, UPDATE_CHECK_DEFAULT)
+        ).strip().lower()
+        return value in {"1", "true", "yes", "on"}
+
+    def _schedule_update_check(self, delay_ms: int) -> None:
+        """Start the optional GitHub check later, never on the Tk thread."""
+        if (
+            self._closed
+            or not self.version
+            or not self._update_check_enabled()
+            or self.panel is None
+        ):
+            return
+        if self.update_thread is not None and self.update_thread.is_alive():
+            return
+        self._cancel_update_check()
+        try:
+            self.update_check_after_id = self.panel.after(
+                delay_ms, self._start_update_check
+            )
+        except tk.TclError:
+            self.update_check_after_id = None
+
+    def _cancel_update_check(self) -> None:
+        if self.update_check_after_id is not None and self.panel is not None:
+            try:
+                self.panel.after_cancel(self.update_check_after_id)
+            except tk.TclError:
+                pass
+        self.update_check_after_id = None
+
+    def _start_update_check(self) -> None:
+        self.update_check_after_id = None
+        if self._closed or not self._update_check_enabled():
+            return
+        if self.update_thread is not None and self.update_thread.is_alive():
+            return
+
+        self.update_thread = threading.Thread(
+            target=self._fetch_update_worker,
+            name="GalteaUpdateCheck",
+            daemon=True,
+        )
+        try:
+            self.update_thread.start()
+        except RuntimeError:
+            self.update_thread = None
+            return
+        if self.panel is not None:
+            try:
+                self.panel.after(100, self._poll_update_queue)
+            except tk.TclError:
+                pass
+
+    def _fetch_update_worker(self) -> None:
+        try:
+            result = fetch_latest_release(self.version)
+        except Exception:  # noqa: BLE001 - a check must never break the plugin
+            result = None
+        self.update_queue.put(result)
+
+    def _poll_update_queue(self) -> None:
+        """Pick up the worker result on the Tk thread and update the UI."""
+        if self._closed:
+            return
+        try:
+            result = self.update_queue.get_nowait()
+        except queue.Empty:
+            if self.update_thread is not None and self.update_thread.is_alive():
+                if self.panel is not None:
+                    try:
+                        self.panel.after(100, self._poll_update_queue)
+                    except tk.TclError:
+                        pass
+            else:
+                # The worker ended without a result (or failed to start);
+                # do not keep polling forever.
+                self.update_thread = None
+                self._schedule_update_check(UPDATE_CHECK_INTERVAL_MS)
+            return
+
+        self.update_thread = None
+        if not self._update_check_enabled():
+            self.update_info = None
+            self._refresh_update_hint()
+            return
+        if result is not None and is_newer(result.version, self.version):
+            self.update_info = result
+            self._refresh_update_hint()
+        self._schedule_update_check(UPDATE_CHECK_INTERVAL_MS)
+
+    def _refresh_update_hint(self) -> None:
+        if self.details_update is None or self.details_update_label is None:
+            return
+        info = self.update_info if self._update_check_enabled() else None
+        if info is None:
+            try:
+                self.details_update.grid_remove()
+                self.details_update_label.configure(text="")
+            except tk.TclError:
+                pass
+            return
+        try:
+            self.details_update_label.configure(
+                text=f"Update available: {info.version} \u2014 GitHub release"
+            )
+            self.details_update.grid()
+            _apply_theme(self.details_update)
+        except tk.TclError:
+            pass
+
+    def _open_update_release(self) -> None:
+        if self.update_info is not None:
+            _open_url(self.update_info.url)
 
     # -- main window panel ----------------------------------------------
 
@@ -246,6 +385,7 @@ class PluginUI:
         self.panel = frame
         self.refresh()
         _apply_theme(frame)
+        self._schedule_update_check(UPDATE_CHECK_DELAY_MS)
         return frame
 
     def refresh(self) -> None:
@@ -428,6 +568,22 @@ class PluginUI:
         )
         history_box.grid(row=0, column=0, sticky="nsew")
 
+        # Optional update link, kept at the very bottom of the window.
+        self.details_update = tk.Frame(outer)
+        self.details_update.grid(row=4, column=0, sticky="ew", pady=(8, 0))
+        self.details_update_label = tk.Label(
+            self.details_update,
+            text="",
+            anchor="w",
+            cursor="hand2",
+            font=self._get_link_font(),
+        )
+        self.details_update_label.pack(side="left")
+        self.details_update_label.bind(
+            "<Button-1>", lambda _event: self._open_update_release()
+        )
+        self.details_update.grid_remove()
+
         self._show_details_view("targets")
         _apply_theme(window)
 
@@ -526,6 +682,8 @@ class PluginUI:
         self.details = None
         self.details_bulk = None
         self.details_content = None
+        self.details_update = None
+        self.details_update_label = None
         self.targets_view = None
         self.history_view = None
         self.tab_targets = None
@@ -540,6 +698,7 @@ class PluginUI:
         self._refresh_target_rows()
         self._refresh_history_rows()
         self._update_details_tabs()
+        self._refresh_update_hint()
 
     def _refresh_target_rows(self) -> None:
         if self.target_rows is None or self.details_total is None:
@@ -1019,7 +1178,8 @@ class PluginUI:
             text=(
                 "Tracks tonnage sold to fleet carriers and squadron carriers, and "
                 "commodities delivered to construction sites.\n"
-                f"Data file: {self.store.path}"
+                f"Data files: {self.store.path} (hauls) and "
+                f"{self.store.cache_path} (carrier names)"
             ),
             justify="left",
             wraplength=420,
@@ -1048,22 +1208,42 @@ class PluginUI:
             row=5, column=0, sticky="w"
         )
 
+        self.update_check_var = tk.BooleanVar(
+            master=frame, value=self._update_check_enabled()
+        )
+        nb.Checkbutton(
+            frame,
+            text="Check GitHub for new versions",
+            variable=self.update_check_var,
+        ).grid(row=6, column=0, sticky="w", pady=(12, 0))
+        update_hint = nb.Label(
+            frame,
+            text=(
+                "Checks the latest GitHub release in the background. Only release "
+                "metadata is fetched; no commander or haul data is sent."
+            ),
+            justify="left",
+            wraplength=420,
+        )
+        update_hint.grid(row=7, column=0, sticky="w", pady=(0, 8))
+
         # Footer: version and repository link, left aligned and kept at the
         # bottom of the page.  EDMC does not theme the plugin prefs tab, so use
         # nb widgets (their default colours) instead of theme.update().
-        frame.rowconfigure(6, weight=1)
+        frame.rowconfigure(8, weight=1)
         footer = tk.Frame(frame)
-        footer.grid(row=7, column=0, sticky="w", pady=(12, 0))
+        footer.grid(row=9, column=0, sticky="w", pady=(12, 0))
         version_label = nb.Label(footer, text=f"Version {self.version or 'unknown'}")
         version_label.pack(side="left")
         background = version_label.cget("background")
         if background:
             footer.configure(background=background)
-        if self.link_font is None:
-            self.link_font = tkfont.nametofont("TkDefaultFont").copy()
-            self.link_font.configure(underline=True)
         link = nb.Label(
-            footer, text=GITHUB_URL, cursor="hand2", font=self.link_font, wraplength=420
+            footer,
+            text=GITHUB_URL,
+            cursor="hand2",
+            font=self._get_link_font(),
+            wraplength=420,
         )
         link.pack(side="left", padx=(8, 0))
         link.bind("<Button-1>", lambda _event: _open_url(GITHUB_URL))
@@ -1071,7 +1251,7 @@ class PluginUI:
         def fit_width(event: tk.Event) -> None:
             """Keep the long labels inside the page when the dialog is resized."""
             width = max(int(event.width) - 4, 200)
-            for label in (description, hint):
+            for label in (description, hint, update_hint):
                 try:
                     label.configure(wraplength=width)
                 except tk.TclError:
@@ -1088,13 +1268,27 @@ class PluginUI:
 
     def save_prefs(self) -> None:
         """Persist the preferences page; called by EDMC after the dialog."""
-        if self.discord_user_var is None:
+        if self.discord_user_var is not None:
+            _set_setting(
+                SETTING_DISCORD_USER,
+                normalize_discord_user(self.discord_user_var.get()),
+            )
+        if self.update_check_var is None:
             return
-        _set_setting(
-            SETTING_DISCORD_USER, normalize_discord_user(self.discord_user_var.get())
-        )
+
+        enabled = bool(self.update_check_var.get())
+        _set_setting(SETTING_UPDATE_CHECK, "1" if enabled else "0")
+        if enabled:
+            if self.update_info is None:
+                self._schedule_update_check(0)
+        else:
+            self.update_info = None
+            self._cancel_update_check()
+            self._refresh_update_hint()
 
     # -- lifecycle -------------------------------------------------------
 
     def close(self) -> None:
+        self._closed = True
+        self._cancel_update_check()
         self.close_details()
