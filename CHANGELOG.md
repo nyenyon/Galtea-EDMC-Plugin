@@ -5,6 +5,23 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
+## [0.6.1] - 2026-10-26
+
+### Added
+
+- **Check now** button in the plugin settings for an immediate GitHub release
+  check. It works even when automatic checks are disabled and shows the result
+  below the button.
+- A manually found update is also shown as a link at the bottom of the details
+  window, even if automatic checks are disabled.
+
+### Changed
+
+- Manual checks use the same background request and timeout as automatic
+  checks. Automatic failures stay silent; manual checks report a failure in
+  the settings tab.
+- The automatic check remains opt-in and off by default.
+
 ## [0.6.0] - 2026-10-26
 
 ### Added

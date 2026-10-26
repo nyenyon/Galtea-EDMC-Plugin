@@ -197,10 +197,14 @@ class PluginUI:
         self.report_copied = False
         self.discord_user_var: Optional[tk.StringVar] = None
         self.update_check_var: Optional[tk.BooleanVar] = None
+        self.update_check_button: Optional[Any] = None
+        self.update_status: Optional[Any] = None
         self.link_font: Optional[tkfont.Font] = None
         self._panel_fonts: Dict[str, tkfont.Font] = {}
 
         self.update_info: Optional[ReleaseInfo] = None
+        self.update_info_from_manual = False
+        self.update_check_is_manual = False
         self.details_update: Optional[tk.Frame] = None
         self.details_update_label: Optional[tk.Label] = None
         self.update_queue: queue.Queue = queue.Queue()
@@ -243,6 +247,49 @@ class PluginUI:
         ).strip().lower()
         return value in {"1", "true", "yes", "on"}
 
+    @staticmethod
+    def _update_link_text(info: ReleaseInfo) -> str:
+        return f"Update available: {info.version} \u2014 GitHub release"
+
+    def _set_update_button_running(self, running: bool) -> None:
+        if self.update_check_button is None:
+            return
+        try:
+            if not self.update_check_button.winfo_exists():
+                self.update_check_button = None
+                return
+            self.update_check_button.configure(
+                state="disabled" if running else "normal"
+            )
+        except tk.TclError:
+            self.update_check_button = None
+
+    def _set_update_status(self, text: str, link: bool = False) -> None:
+        if self.update_status is None:
+            return
+        try:
+            if not self.update_status.winfo_exists():
+                self.update_status = None
+                return
+            self.update_status.configure(
+                text=text,
+                cursor="hand2" if link else "",
+                font=self._get_link_font() if link else "TkDefaultFont",
+            )
+            if link:
+                self.update_status.bind("<Button-1>", self._on_update_status_click)
+            else:
+                self.update_status.unbind("<Button-1>")
+            if text:
+                self.update_status.grid()
+            else:
+                self.update_status.grid_remove()
+        except tk.TclError:
+            self.update_status = None
+
+    def _on_update_status_click(self, _event: tk.Event) -> None:
+        self._open_update_release()
+
     def _schedule_update_check(self, delay_ms: int) -> None:
         """Start the optional GitHub check later, never on the Tk thread."""
         if (
@@ -270,13 +317,18 @@ class PluginUI:
                 pass
         self.update_check_after_id = None
 
-    def _start_update_check(self) -> None:
+    def _start_update_check(self, manual: bool = False) -> None:
         self.update_check_after_id = None
-        if self._closed or not self._update_check_enabled():
+        if self._closed:
+            return
+        if not manual and not self._update_check_enabled():
             return
         if self.update_thread is not None and self.update_thread.is_alive():
+            if manual:
+                self._set_update_status("A check is already running\u2026")
             return
 
+        self.update_check_is_manual = manual
         self.update_thread = threading.Thread(
             target=self._fetch_update_worker,
             name="GalteaUpdateCheck",
@@ -286,12 +338,34 @@ class PluginUI:
             self.update_thread.start()
         except RuntimeError:
             self.update_thread = None
+            self.update_check_is_manual = False
+            self._set_update_button_running(False)
+            if manual:
+                self._set_update_status(
+                    "Could not check for updates. Try again later."
+                )
             return
+        self._set_update_button_running(True)
+        if manual:
+            self._set_update_status("Checking GitHub for a new version\u2026")
         if self.panel is not None:
             try:
                 self.panel.after(100, self._poll_update_queue)
             except tk.TclError:
                 pass
+
+    def _manual_update_check(self) -> None:
+        """Run an explicit check, even when automatic checks are disabled."""
+        if self._closed:
+            return
+        if self.panel is None:
+            self._set_update_status("Could not check for updates. Try again later.")
+            return
+        if self.update_thread is not None and self.update_thread.is_alive():
+            self._set_update_status("A check is already running\u2026")
+            return
+        self._cancel_update_check()
+        self._start_update_check(manual=True)
 
     def _fetch_update_worker(self) -> None:
         try:
@@ -316,24 +390,55 @@ class PluginUI:
             else:
                 # The worker ended without a result (or failed to start);
                 # do not keep polling forever.
+                manual = self.update_check_is_manual
                 self.update_thread = None
+                self.update_check_is_manual = False
+                self._set_update_button_running(False)
+                if manual:
+                    self._set_update_status(
+                        "Could not check for updates. Try again later."
+                    )
                 self._schedule_update_check(UPDATE_CHECK_INTERVAL_MS)
             return
 
+        manual = self.update_check_is_manual
         self.update_thread = None
-        if not self._update_check_enabled():
-            self.update_info = None
+        self.update_check_is_manual = False
+        self._set_update_button_running(False)
+        if not manual and not self._update_check_enabled():
+            if not self.update_info_from_manual:
+                self.update_info = None
             self._refresh_update_hint()
             return
         if result is not None and is_newer(result.version, self.version):
             self.update_info = result
+            self.update_info_from_manual = manual
             self._refresh_update_hint()
+            if manual:
+                self._set_update_status(self._update_link_text(result), link=True)
+        elif manual:
+            if result is not None:
+                # A successful manual check found no newer release.
+                self.update_info = None
+                self.update_info_from_manual = False
+                self._refresh_update_hint()
+                self._set_update_status("You are up to date.")
+            else:
+                # Keep any previously known update when the request failed.
+                self._set_update_status(
+                    "Could not check for updates. Try again later."
+                )
         self._schedule_update_check(UPDATE_CHECK_INTERVAL_MS)
 
     def _refresh_update_hint(self) -> None:
         if self.details_update is None or self.details_update_label is None:
             return
-        info = self.update_info if self._update_check_enabled() else None
+        info = (
+            self.update_info
+            if self.update_info is not None
+            and (self._update_check_enabled() or self.update_info_from_manual)
+            else None
+        )
         if info is None:
             try:
                 self.details_update.grid_remove()
@@ -342,9 +447,7 @@ class PluginUI:
                 pass
             return
         try:
-            self.details_update_label.configure(
-                text=f"Update available: {info.version} \u2014 GitHub release"
-            )
+            self.details_update_label.configure(text=self._update_link_text(info))
             self.details_update.grid()
             _apply_theme(self.details_update)
         except tk.TclError:
@@ -1220,19 +1323,42 @@ class PluginUI:
             frame,
             text=(
                 "Checks the latest GitHub release in the background. Only release "
-                "metadata is fetched; no commander or haul data is sent."
+                "metadata is fetched; no commander or haul data is sent. "
+                "Use Check now for an immediate check."
             ),
             justify="left",
             wraplength=420,
         )
         update_hint.grid(row=7, column=0, sticky="w", pady=(0, 8))
 
+        self.update_check_button = nb.Button(
+            frame, text="Check now", command=self._manual_update_check
+        )
+        self.update_check_button.grid(row=8, column=0, sticky="w", pady=(4, 0))
+        status_label = nb.Label(frame, text="", justify="left", wraplength=420)
+        status_label.grid(row=9, column=0, sticky="w", pady=(2, 0))
+        status_label.grid_remove()
+        self.update_status = status_label
+        if (
+            self.update_thread is not None
+            and self.update_thread.is_alive()
+            and self.update_check_is_manual
+        ):
+            self._set_update_status("Checking GitHub for a new version\u2026")
+        elif self.update_info is not None and (
+            self._update_check_enabled() or self.update_info_from_manual
+        ):
+            self._set_update_status(self._update_link_text(self.update_info), link=True)
+        self._set_update_button_running(
+            self.update_thread is not None and self.update_thread.is_alive()
+        )
+
         # Footer: version and repository link, left aligned and kept at the
         # bottom of the page.  EDMC does not theme the plugin prefs tab, so use
         # nb widgets (their default colours) instead of theme.update().
-        frame.rowconfigure(8, weight=1)
+        frame.rowconfigure(10, weight=1)
         footer = tk.Frame(frame)
-        footer.grid(row=9, column=0, sticky="w", pady=(12, 0))
+        footer.grid(row=11, column=0, sticky="w", pady=(12, 0))
         version_label = nb.Label(footer, text=f"Version {self.version or 'unknown'}")
         version_label.pack(side="left")
         background = version_label.cget("background")
@@ -1251,7 +1377,7 @@ class PluginUI:
         def fit_width(event: tk.Event) -> None:
             """Keep the long labels inside the page when the dialog is resized."""
             width = max(int(event.width) - 4, 200)
-            for label in (description, hint, update_hint):
+            for label in (description, hint, update_hint, status_label):
                 try:
                     label.configure(wraplength=width)
                 except tk.TclError:
@@ -1286,8 +1412,11 @@ class PluginUI:
             if not was_enabled:
                 self._schedule_update_check(0)
         else:
-            self.update_info = None
             self._cancel_update_check()
+            # Keep a manually found update visible even when automatic checks
+            # are turned off; it came from an explicit user action.
+            if not self.update_info_from_manual:
+                self.update_info = None
             self._refresh_update_hint()
 
     # -- lifecycle -------------------------------------------------------

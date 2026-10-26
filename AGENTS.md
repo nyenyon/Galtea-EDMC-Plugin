@@ -33,7 +33,7 @@ There is no linter or CI configuration; do not invent one without asking.
 ## Working here
 
 - `galtea/` must stay importable without EDMC: only `load.py` and `galtea/ui.py` may import EDMC modules (`myNotebook`, `theme`) or tkinter. Network access belongs in `galtea/update.py`.
-- The optional update check is opt-in (`galtea_update_check`, default off), lives in `galtea/update.py` (standard-library `urllib.request` only), runs off the Tk thread with a timeout, and fails silently. It only fetches release metadata and opens a validated GitHub release URL; it never downloads or installs updates. Tests mock the network.
+- The optional automatic update check is opt-in (`galtea_update_check`, default off), lives in `galtea/update.py` (standard-library `urllib.request` only), runs off the Tk thread with a timeout, and fails silently. The settings tab also has a **Check now** button for an explicit manual check; it uses the same background worker, works even when automatic checks are off, and reports its result in the settings tab. It only fetches release metadata and opens a validated GitHub release URL; it never downloads or installs updates. Tests mock the network.
 - UI uses classic `tk` widgets (not `ttk`) and registers every widget tree with EDMC's `theme.update()`; `ttk` widgets are not recoloured by EDMC in dark mode. New widgets must go through `_apply_theme()`. Exception: EDMC does not theme plugin settings tabs, so `build_prefs()` uses `nb` widgets and keeps the default colours there.
 - `journal_entry` runs on EDMC's Tk main thread, so UI updates are safe there; keep journal handling non-blocking and wrap it in `try/except`.
 - Journal field names are verified against real journal samples; check EDDI/EDDiscovery before adding new events.
