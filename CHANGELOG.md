@@ -5,13 +5,16 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
-## [Unreleased]
+## [0.5.1] - 2026-10-26
 
 ### Changed
 
 - Carrier display names are cached in `data/carrier_cache.json` instead of
   inside `data/haul_tracker.json`, so updating a name no longer rewrites the
-  haul totals. Existing embedded caches are migrated automatically.
+  haul totals. The haul data schema is now 3, and existing embedded caches are
+  migrated automatically.
+- The report window and documentation now refer only to Discord; the Sicord
+  wording was removed.
 
 ## [0.5.0] - 2026-10-25
 
