@@ -685,7 +685,7 @@ class PluginUI:
     # -- report ----------------------------------------------------------
 
     def _show_report(self, target: Target) -> None:
-        """Show the Discord/Sicord macro for one target in a copyable field."""
+        """Show the Discord macro for one target in a copyable field."""
         user = self.discord_user()
         command = target.report_command(user)
         parent = self.details if self.details is not None else self.panel
@@ -711,7 +711,7 @@ class PluginUI:
             tk.Label(frame, text=f"Batch {target.id[:8]}", font="TkSmallCaptionFont").pack(
                 anchor="w"
             )
-        tk.Label(frame, text="Paste this command into Discord or Sicord:").pack(
+        tk.Label(frame, text="Paste this command into Discord:").pack(
             anchor="w", pady=(8, 0)
         )
 

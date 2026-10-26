@@ -1,4 +1,4 @@
-"""The Discord/Sicord report command generated for a target."""
+"""The Discord report command generated for a target."""
 
 from __future__ import annotations
 

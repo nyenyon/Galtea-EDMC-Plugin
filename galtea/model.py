@@ -26,7 +26,7 @@ KIND_LABELS = {
     KIND_CARRIER: "Carrier",
 }
 
-# Discord/Sicord handle used in the report command when none is configured.
+# Discord handle used in the report command when none is configured.
 # A placeholder, so reports are never accidentally credited to a real user.
 DEFAULT_DISCORD_USER = "@yourdiscordname"
 
@@ -117,7 +117,7 @@ class Target:
         return KIND_LABELS.get(self.kind, "Unknown")
 
     def report_command(self, user: Optional[str] = DEFAULT_DISCORD_USER) -> str:
-        """The Discord/Sicord macro that reports this target's tonnage."""
+        """The Discord macro that reports this target's tonnage."""
         name = normalize_discord_user(user) or DEFAULT_DISCORD_USER
         return f"/addscore user:{name} points:{int(self.tons)} comment:{self.label}"
 

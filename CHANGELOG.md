@@ -73,7 +73,7 @@ Versions match `VERSION` in `load.py`.
 ### Added
 
 - **Report** button next to every target in the details window: it shows the
-  Discord/Sicord macro `/addscore user:@name points:<tons> comment:<target>`
+  Discord macro `/addscore user:@name points:<tons> comment:<target>`
   in a copyable field. The Discord handle is configurable in the plugin
   preferences (default `@nyenyon`).
 

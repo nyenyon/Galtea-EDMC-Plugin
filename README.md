@@ -9,7 +9,7 @@
 > **Note:** This plugin was created entirely with AI agents. Code, tests and
 > documentation were generated and reviewed by them.
 
-An [EDMarketConnector](https://github.com/EDCD/EDMarketConnector) plugin for [Project Galtea](https://projectgaltea.org). It counts tonnage sold at **fleet carriers** and **squadron carriers** and commodities delivered to **construction sites** (space and planetary), and generates the prefilled `/addscore` command for the project's Discord/Sicord.
+An [EDMarketConnector](https://github.com/EDCD/EDMarketConnector) plugin for [Project Galtea](https://projectgaltea.org). It counts tonnage sold at **fleet carriers** and **squadron carriers** and commodities delivered to **construction sites** (space and planetary), and generates the prefilled `/addscore` command for the project's Discord.
 
 ## Project Galtea
 
@@ -26,7 +26,7 @@ The plugin has two jobs:
   /addscore user:@nyenyon points:2372 comment:[PJGT]PANDA BEAR (B6W-34K)
   ```
 
-  **Copy** puts it on the clipboard; paste it into the Galtea Discord/Sicord. This avoids typos in the handle, tonnage or carrier name and keeps the report consistent with the tracker.
+  **Copy** puts it on the clipboard; paste it into the Galtea Discord. This avoids typos in the handle, tonnage or carrier name and keeps the report consistent with the tracker.
 - **Nothing is posted automatically.** The plugin only prepares the command; you decide when and where to send it.
 
 ### What is counted
