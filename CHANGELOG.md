@@ -16,6 +16,11 @@ Versions match `VERSION` in `load.py`.
   GitHub release at the bottom. The plugin never downloads or installs an
   update automatically.
 
+### Changed
+
+- The update check runs immediately only when the option is enabled; saving
+  the plugin settings later does not reset the 24-hour interval.
+
 ## [0.5.1] - 2026-10-26
 
 ### Changed
