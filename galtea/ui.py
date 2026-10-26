@@ -1276,10 +1276,14 @@ class PluginUI:
         if self.update_check_var is None:
             return
 
+        was_enabled = self._update_check_enabled()
         enabled = bool(self.update_check_var.get())
         _set_setting(SETTING_UPDATE_CHECK, "1" if enabled else "0")
         if enabled:
-            if self.update_info is None:
+            self._refresh_update_hint()
+            # Run immediately only when the user has just opted in. Saving the
+            # prefs again must not bypass the 24-hour check interval.
+            if not was_enabled:
                 self._schedule_update_check(0)
         else:
             self.update_info = None
