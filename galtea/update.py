@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 import logging
+import queue
 import re
+import threading
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -28,7 +30,7 @@ _VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$", re.IGNORECASE)
 
 @dataclass(frozen=True)
 class ReleaseInfo:
-    """A newer release discovered on GitHub."""
+    """The latest stable release found on GitHub."""
 
     version: str
     url: str
@@ -112,3 +114,96 @@ def fetch_latest_release(
     except Exception as exc:  # noqa: BLE001 - update checks must never break EDMC
         logger.debug("GitHub release check failed: %s", exc)
         return None
+
+
+class UpdateChecker:
+    """State machine for the optional GitHub release check.  No Tk.
+
+    ``start`` runs one fetch in a worker thread; ``apply_result`` folds a
+    finished check into ``info`` and returns the action the UI should show.
+    ``thread_factory`` exists so tests can fake the thread.
+    """
+
+    def __init__(
+        self,
+        current_version: str,
+        is_enabled: Callable[[], bool],
+        *,
+        fetch: Optional[Callable[[str], Optional[ReleaseInfo]]] = None,
+        thread_factory: Optional[Callable[[Callable[[], None]], Any]] = None,
+    ):
+        self.current_version = str(current_version or "")
+        self.is_enabled = is_enabled
+        self._fetch = fetch or fetch_latest_release
+        self._thread_factory = thread_factory
+        self.info: Optional[ReleaseInfo] = None
+        self.info_from_manual = False
+        self.manual = False
+        self.thread: Any = None
+        self.closed = False
+        self.queue: queue.Queue = queue.Queue()
+
+    @property
+    def busy(self) -> bool:
+        return self.thread is not None and self.thread.is_alive()
+
+    def start(self, manual: bool = False) -> str:
+        """Kick off one check; returns skipped, running, failed or started."""
+        if self.closed:
+            return "skipped"
+        if not manual and not self.is_enabled():
+            return "skipped"
+        if self.busy:
+            return "running"
+        self.manual = manual
+        if self._thread_factory is not None:
+            thread = self._thread_factory(self._worker)
+        else:
+            thread = threading.Thread(
+                target=self._worker, name="GalteaUpdateCheck", daemon=True
+            )
+        self.thread = thread
+        try:
+            thread.start()
+        except RuntimeError:
+            self.thread = None
+            self.manual = False
+            return "failed"
+        return "started"
+
+    def _worker(self) -> None:
+        try:
+            self.queue.put(self._fetch(self.current_version))
+        except Exception:  # noqa: BLE001 - a check must never break the plugin
+            self.queue.put(None)
+
+    def abandon(self) -> bool:
+        """Reset a finished worker that left no result; return manual mode."""
+        manual = self.manual
+        self.thread = None
+        self.manual = False
+        return manual
+
+    def apply_result(self, result: Optional[ReleaseInfo]) -> Tuple[str, bool]:
+        """Fold one finished check into ``info``.
+
+        Returns the action (``disabled``, ``update``, ``uptodate``, ``failed``
+        or ``idle``) and whether the check had been started manually.
+        ``failed`` keeps a previously found update; ``idle`` changes nothing.
+        """
+        manual = self.abandon()
+        if not manual and not self.is_enabled():
+            if not self.info_from_manual:
+                self.info = None
+            return "disabled", manual
+        if result is not None and is_newer(result.version, self.current_version):
+            self.info = result
+            self.info_from_manual = manual
+            return "update", manual
+        if manual:
+            if result is not None:
+                self.info = None
+                self.info_from_manual = False
+                return "uptodate", manual
+            return "failed", manual
+        return "idle", manual

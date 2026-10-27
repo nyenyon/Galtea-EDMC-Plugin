@@ -65,6 +65,7 @@ def plugin_start3(plugin_dir: str) -> str:
             Path(_store.path) != _STORE_FILE
             or Path(_store.cache_path) != _CACHE_FILE
         ):
+            _store.save()  # keep anything collected under the old path
             _store.path = _STORE_FILE
             _store.cache_path = _CACHE_FILE
             _store.load()

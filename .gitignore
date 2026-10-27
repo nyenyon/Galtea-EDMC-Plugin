@@ -6,4 +6,5 @@ venv/
 .DS_Store
 data/
 *.corrupt
+*.corrupt.*
 *.tmp

@@ -10,6 +10,8 @@ from galtea.update import (
     MAX_RESPONSE_BYTES,
     RELEASE_URL_PREFIX,
     RELEASES_API_URL,
+    ReleaseInfo,
+    UpdateChecker,
     fetch_latest_release,
     is_newer,
     normalize_version,
@@ -139,6 +141,154 @@ class ReleaseFetchTest(unittest.TestCase):
             return FakeResponse(b"{not json")
 
         self.assertIsNone(fetch_latest_release("0.6.0", opener=opener))
+
+
+class FakeThread:
+    """Thread stand-in that runs its target only when the test says so."""
+
+    def __init__(self, target):
+        self.target = target
+        self.alive = False
+
+    def start(self):
+        self.alive = True
+
+    def is_alive(self):
+        return self.alive
+
+
+class BoomThread(FakeThread):
+    def start(self):
+        raise RuntimeError("cannot start")
+
+
+NEWER = ReleaseInfo("9.9.9", RELEASE_URL_PREFIX + "tag/v9.9.9")
+SAME = ReleaseInfo("0.6.1", RELEASE_URL_PREFIX + "tag/v0.6.1")
+
+
+class UpdateCheckerTest(unittest.TestCase):
+    def make(self, enabled=True, fetch=lambda version: NEWER, thread_cls=FakeThread):
+        self.state = {"enabled": enabled}
+        self.threads = []
+
+        def factory(target):
+            thread = thread_cls(target)
+            self.threads.append(thread)
+            return thread
+
+        return UpdateChecker(
+            "0.6.1",
+            lambda: self.state["enabled"],
+            fetch=fetch,
+            thread_factory=factory,
+        )
+
+    def test_start_skips_when_closed_or_disabled(self) -> None:
+        checker = self.make()
+        checker.closed = True
+        self.assertEqual(checker.start(), "skipped")
+        checker.closed = False
+        self.state["enabled"] = False
+        self.assertEqual(checker.start(), "skipped")
+
+    def test_manual_check_works_while_disabled(self) -> None:
+        checker = self.make(enabled=False)
+        self.assertEqual(checker.start(manual=True), "started")
+        self.assertTrue(checker.manual)
+
+    def test_start_while_busy_reports_running(self) -> None:
+        checker = self.make()
+        self.assertEqual(checker.start(), "started")
+        self.assertEqual(checker.start(), "running")
+        self.assertEqual(checker.start(manual=True), "running")
+
+    def test_start_reports_thread_failure(self) -> None:
+        checker = self.make(thread_cls=BoomThread)
+        self.assertEqual(checker.start(manual=True), "failed")
+        self.assertIsNone(checker.thread)
+        self.assertFalse(checker.manual)
+
+    def test_worker_uses_current_version(self) -> None:
+        seen = []
+
+        def fetch(version):
+            seen.append(version)
+            return NEWER
+
+        checker = self.make(fetch=fetch)
+        checker.start()
+        self.threads[-1].target()
+        self.assertIs(checker.queue.get_nowait(), NEWER)
+        self.assertEqual(seen, ["0.6.1"])
+
+    def test_worker_converts_failures_to_none(self) -> None:
+        def fetch(version):
+            raise RuntimeError("boom")
+
+        checker = self.make(fetch=fetch)
+        checker.start()
+        self.threads[-1].target()
+        self.assertIsNone(checker.queue.get_nowait())
+
+    def test_auto_update_sets_info(self) -> None:
+        checker = self.make()
+        checker.start()
+        self.assertEqual(checker.apply_result(NEWER), ("update", False))
+        self.assertEqual(checker.info, NEWER)
+        self.assertFalse(checker.info_from_manual)
+
+    def test_manual_update_marks_info_as_manual(self) -> None:
+        checker = self.make()
+        checker.start(manual=True)
+        self.assertEqual(checker.apply_result(NEWER), ("update", True))
+        self.assertTrue(checker.info_from_manual)
+
+    def test_manual_up_to_date_clears_previous_info(self) -> None:
+        checker = self.make()
+        checker.info = NEWER
+        checker.start(manual=True)
+        self.assertEqual(checker.apply_result(SAME), ("uptodate", True))
+        self.assertIsNone(checker.info)
+        self.assertFalse(checker.info_from_manual)
+
+    def test_manual_failure_keeps_previous_info(self) -> None:
+        checker = self.make()
+        checker.info = NEWER
+        checker.info_from_manual = True
+        checker.start(manual=True)
+        self.assertEqual(checker.apply_result(None), ("failed", True))
+        self.assertEqual(checker.info, NEWER)
+
+    def test_auto_failure_is_silent_idle(self) -> None:
+        checker = self.make()
+        checker.start()
+        self.assertEqual(checker.apply_result(None), ("idle", False))
+        self.assertIsNone(checker.info)
+
+    def test_result_while_auto_disabled_drops_auto_info(self) -> None:
+        checker = self.make()
+        checker.info = NEWER
+        checker.start()
+        self.state["enabled"] = False
+        self.assertEqual(checker.apply_result(NEWER), ("disabled", False))
+        self.assertIsNone(checker.info)
+
+    def test_result_while_auto_disabled_keeps_manual_info(self) -> None:
+        checker = self.make()
+        checker.info = NEWER
+        checker.info_from_manual = True
+        checker.start()
+        self.state["enabled"] = False
+        self.assertEqual(checker.apply_result(NEWER), ("disabled", False))
+        self.assertEqual(checker.info, NEWER)
+
+    def test_abandon_resets_worker_state(self) -> None:
+        checker = self.make()
+        checker.start(manual=True)
+        self.assertTrue(checker.busy)
+        self.assertTrue(checker.abandon())
+        self.assertFalse(checker.busy)
+        self.assertFalse(checker.manual)
 
 
 if __name__ == "__main__":

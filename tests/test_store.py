@@ -10,6 +10,7 @@ from pathlib import Path
 from galtea.model import KIND_CARRIER, KIND_FLEET, KIND_SQUADRON
 from galtea.store import (
     CACHE_SCHEMA_VERSION,
+    CARRIER_LIMIT,
     HISTORY_LIMIT,
     SCHEMA_VERSION,
     HaulStore,
@@ -295,6 +296,23 @@ class StoreTest(unittest.TestCase):
         self.assertFalse(self.path.exists())
         self.assertEqual(self.store.cmdr_name("F999"), "")
 
+    def test_carrier_cache_evicts_untouched_carriers_oldest_first(self) -> None:
+        for index in range(1, CARRIER_LIMIT + 2):
+            self.store.remember_carrier("F123", index, f"Carrier {index}", "")
+
+        self.assertEqual(self.store.carrier_name("F123", 1), {})
+        self.assertEqual(self.store.carrier_name("F123", 2)["name"], "Carrier 2")
+
+    def test_carrier_cache_forgets_least_recently_named(self) -> None:
+        for index in range(1, CARRIER_LIMIT + 1):
+            self.store.remember_carrier("F123", index, f"Carrier {index}", "")
+        # Naming the oldest carrier again moves it to the back of the queue.
+        self.store.remember_carrier("F123", 1, "Home Carrier", "")
+        self.store.remember_carrier("F123", CARRIER_LIMIT + 1, "Newcomer", "")
+
+        self.assertEqual(self.store.carrier_name("F123", 1)["name"], "Home Carrier")
+        self.assertEqual(self.store.carrier_name("F123", 2), {})
+
     def test_legacy_carrier_cache_is_migrated(self) -> None:
         self.path.write_text(
             json.dumps(
@@ -430,6 +448,21 @@ class StoreTest(unittest.TestCase):
         store = HaulStore(self.path)
         self.assertEqual(store.targets("F123"), [])
         self.assertTrue(self.path.with_suffix(".corrupt").exists())
+
+    def test_corrupt_backups_are_not_overwritten(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text("{first", encoding="utf-8")
+        HaulStore._move_corrupt(self.path)
+
+        self.path.write_text("{second", encoding="utf-8")
+        HaulStore._move_corrupt(self.path)
+
+        self.assertEqual(
+            self.path.with_suffix(".corrupt").read_text(encoding="utf-8"), "{first"
+        )
+        self.assertEqual(
+            self.path.with_suffix(".corrupt.1").read_text(encoding="utf-8"), "{second"
+        )
 
     def test_load_corrects_squadron_carrier_stored_as_fleet(self) -> None:
         self.add_carrier()

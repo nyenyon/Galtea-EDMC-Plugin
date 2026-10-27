@@ -17,7 +17,6 @@ KIND_CONSTRUCTION = "construction"
 KIND_CARRIER = "carrier"
 
 CARRIER_KINDS = frozenset({KIND_FLEET, KIND_SQUADRON, KIND_CARRIER})
-TRACKED_KINDS = frozenset({KIND_FLEET, KIND_SQUADRON, KIND_CONSTRUCTION, KIND_CARRIER})
 
 KIND_LABELS = {
     KIND_FLEET: "Fleet carrier",
@@ -25,6 +24,20 @@ KIND_LABELS = {
     KIND_CONSTRUCTION: "Construction site",
     KIND_CARRIER: "Carrier",
 }
+
+# Fallback station name before we ever saw the site itself; the details view
+# replaces it once a Docked/Location event brings the real name.
+CONSTRUCTION_PLACEHOLDER_PREFIX = "Construction site "
+
+
+def construction_placeholder(market_id: Any) -> str:
+    """The fallback name stored for an unseen construction site."""
+    return f"{CONSTRUCTION_PLACEHOLDER_PREFIX}{market_id}"
+
+
+def is_construction_placeholder(name: Any) -> bool:
+    """True for a fallback name produced by ``construction_placeholder``."""
+    return str(name or "").startswith(CONSTRUCTION_PLACEHOLDER_PREFIX)
 
 # Discord handle used in the report command when none is configured.
 # A placeholder, so reports are never accidentally credited to a real user.

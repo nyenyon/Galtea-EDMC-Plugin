@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .journal import is_squadron_callsign
 from .model import (
@@ -22,8 +23,11 @@ from .model import (
     KIND_FLEET,
     KIND_SQUADRON,
     Target,
+    is_construction_placeholder,
     now_iso,
 )
+
+logger = logging.getLogger("GalteaHaulTracker")
 
 SCHEMA_VERSION = 3
 CACHE_SCHEMA_VERSION = 1
@@ -101,10 +105,17 @@ class HaulStore:
 
     @staticmethod
     def _move_corrupt(path: Path) -> None:
+        backup = path.with_suffix(".corrupt")
+        index = 1
         try:
-            path.replace(path.with_suffix(".corrupt"))
+            while backup.exists():
+                # Keep the evidence of every earlier corruption, too.
+                backup = path.with_suffix(f".corrupt.{index}")
+                index += 1
+            path.replace(backup)
+            logger.warning("moved unreadable data file %s to %s", path, backup)
         except OSError:
-            pass
+            logger.warning("could not move unreadable data file %s", path, exc_info=True)
 
     def _extract_carriers(self) -> bool:
         """Move carrier names embedded by older versions into the cache."""
@@ -130,8 +141,9 @@ class HaulStore:
                 if existing is not None:
                     # The cache is authoritative, but an old entry may be the
                     # only one that knows the pretty name.
-                    if not existing.get("name") and entry.get("name"):
-                        existing["name"] = str(entry.get("name"))
+                    _, existing_entry = existing
+                    if not existing_entry.get("name") and entry.get("name"):
+                        existing_entry["name"] = str(entry.get("name"))
                         cache_changed = True
                     continue
                 key = str(market_id) if market_id else callsign.upper()
@@ -220,7 +232,7 @@ class HaulStore:
             os.replace(temporary, path)
         except OSError:
             # Never let a failing disk stop the tracker from working in memory.
-            pass
+            logger.warning("could not save %s; tracking continues in memory", path, exc_info=True)
 
     def save(self) -> None:
         self._write(self.path, self.data)
@@ -320,10 +332,11 @@ class HaulStore:
     @staticmethod
     def _find_carrier(
         carriers: Dict[str, Any], market_id: Optional[int], callsign: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[Tuple[str, Dict[str, Any]]]:
+        """Key and entry of the cached carrier with this market id or callsign."""
         wanted_id = _as_int(market_id)
         wanted_callsign = str(callsign or "").strip().upper()
-        for entry in carriers.values():
+        for key, entry in carriers.items():
             if not isinstance(entry, dict):
                 continue
             entry_id = _as_int(entry.get("market_id"))
@@ -331,16 +344,17 @@ class HaulStore:
             if (wanted_id and entry_id == wanted_id) or (
                 wanted_callsign and entry_callsign == wanted_callsign
             ):
-                return entry
+                return key, entry
         return None
 
     def carrier_name(
         self, cmdr_key: str, market_id: Optional[int] = None, callsign: str = ""
     ) -> Dict[str, str]:
         """Best known display name for a carrier, by market id or callsign."""
-        entry = self._find_carrier(self._carriers(cmdr_key), market_id, callsign)
-        if entry is None:
+        found = self._find_carrier(self._carriers(cmdr_key), market_id, callsign)
+        if found is None:
             return {}
+        entry = found[1]
         return {
             "name": str(entry.get("name") or ""),
             "callsign": str(entry.get("callsign") or ""),
@@ -363,14 +377,16 @@ class HaulStore:
             return {}
 
         carriers = self._carriers(cmdr_key, create=True)
-        entry = self._find_carrier(carriers, wanted_id, wanted_callsign)
+        found = self._find_carrier(carriers, wanted_id, wanted_callsign)
 
         changed = False
-        if entry is None:
+        if found is None:
             key = str(wanted_id) if wanted_id else wanted_callsign.upper()
             entry = {}
             carriers[key] = entry
             changed = True
+        else:
+            key, entry = found
 
         if wanted_id and _as_int(entry.get("market_id")) != wanted_id:
             entry["market_id"] = wanted_id
@@ -382,11 +398,12 @@ class HaulStore:
             entry["name"] = name
             changed = True
 
-        while len(carriers) > CARRIER_LIMIT:
-            carriers.pop(next(iter(carriers)))
-            changed = True
-
         if changed:
+            # Re-inserting moves the entry to the end, so the limit below
+            # drops the least recently named carrier, not the busiest one.
+            carriers[key] = carriers.pop(key)
+            while len(carriers) > CARRIER_LIMIT:
+                carriers.pop(next(iter(carriers)))
             self.save_cache()
         return {
             "market_id": _as_int(entry.get("market_id")),
@@ -509,7 +526,7 @@ class HaulStore:
                 current = str(target.get("name") or "")
                 # Replace empty names and the generic fallback used when a
                 # contribution arrives before we ever saw the station.
-                if not current or current.startswith("Construction site "):
+                if not current or is_construction_placeholder(current):
                     target["name"] = name
                     changed = True
             if kind and kind != target.get("kind"):

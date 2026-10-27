@@ -8,7 +8,6 @@ styling is not applied to plugin widgets.
 from __future__ import annotations
 
 import queue
-import threading
 import tkinter as tk
 import webbrowser
 from tkinter import font as tkfont
@@ -18,6 +17,7 @@ from typing import Any, Dict, List, Optional
 import myNotebook as nb
 from theme import theme
 
+from .core import Tracker
 from .model import (
     DEFAULT_DISCORD_USER,
     Target,
@@ -27,7 +27,7 @@ from .model import (
     now_iso,
 )
 from .store import HaulStore
-from .update import ReleaseInfo, fetch_latest_release, is_newer
+from .update import ReleaseInfo, UpdateChecker
 
 PANEL_ROWS = 3
 SETTING_DISCORD_USER = "galtea_discord_user"
@@ -77,7 +77,7 @@ def _open_url(url: str) -> None:
         pass
 
 
-def _short(text: str, limit: int = 34) -> str:
+def _short(text: str, limit: int) -> str:
     text = str(text or "")
     return text if len(text) <= limit else text[: limit - 1] + "\u2026"
 
@@ -165,7 +165,7 @@ def _clear(frame: tk.Misc) -> None:
 class PluginUI:
     """Owns every widget the plugin adds to EDMC."""
 
-    def __init__(self, parent: tk.Misc, tracker: Any, store: HaulStore, version: str = ""):
+    def __init__(self, parent: tk.Misc, tracker: Tracker, store: HaulStore, version: str = ""):
         self.parent = parent
         self.tracker = tracker
         self.store = store
@@ -202,13 +202,9 @@ class PluginUI:
         self.link_font: Optional[tkfont.Font] = None
         self._panel_fonts: Dict[str, tkfont.Font] = {}
 
-        self.update_info: Optional[ReleaseInfo] = None
-        self.update_info_from_manual = False
-        self.update_check_is_manual = False
         self.details_update: Optional[tk.Frame] = None
         self.details_update_label: Optional[tk.Label] = None
-        self.update_queue: queue.Queue = queue.Queue()
-        self.update_thread: Optional[threading.Thread] = None
+        self.checker = UpdateChecker(self.version, self._update_check_enabled)
         self.update_check_after_id: Optional[str] = None
         self._closed = False
 
@@ -216,7 +212,7 @@ class PluginUI:
 
     @property
     def cmdr_key(self) -> str:
-        return str(getattr(self.tracker, "cmdr_key", "") or "")
+        return self.tracker.cmdr_key or ""
 
     def _targets(self) -> List[Target]:
         if not self.cmdr_key:
@@ -299,7 +295,7 @@ class PluginUI:
             or self.panel is None
         ):
             return
-        if self.update_thread is not None and self.update_thread.is_alive():
+        if self.checker.busy:
             return
         self._cancel_update_check()
         try:
@@ -319,31 +315,19 @@ class PluginUI:
 
     def _start_update_check(self, manual: bool = False) -> None:
         self.update_check_after_id = None
-        if self._closed:
-            return
-        if not manual and not self._update_check_enabled():
-            return
-        if self.update_thread is not None and self.update_thread.is_alive():
+        action = self.checker.start(manual)
+        if action == "running":
             if manual:
                 self._set_update_status("A check is already running\u2026")
             return
-
-        self.update_check_is_manual = manual
-        self.update_thread = threading.Thread(
-            target=self._fetch_update_worker,
-            name="GalteaUpdateCheck",
-            daemon=True,
-        )
-        try:
-            self.update_thread.start()
-        except RuntimeError:
-            self.update_thread = None
-            self.update_check_is_manual = False
+        if action == "failed":
             self._set_update_button_running(False)
             if manual:
                 self._set_update_status(
                     "Could not check for updates. Try again later."
                 )
+            return
+        if action != "started":
             return
         self._set_update_button_running(True)
         if manual:
@@ -361,82 +345,63 @@ class PluginUI:
         if self.panel is None:
             self._set_update_status("Could not check for updates. Try again later.")
             return
-        if self.update_thread is not None and self.update_thread.is_alive():
-            self._set_update_status("A check is already running\u2026")
-            return
         self._cancel_update_check()
         self._start_update_check(manual=True)
-
-    def _fetch_update_worker(self) -> None:
-        try:
-            result = fetch_latest_release(self.version)
-        except Exception:  # noqa: BLE001 - a check must never break the plugin
-            result = None
-        self.update_queue.put(result)
 
     def _poll_update_queue(self) -> None:
         """Pick up the worker result on the Tk thread and update the UI."""
         if self._closed:
             return
         try:
-            result = self.update_queue.get_nowait()
+            result = self.checker.queue.get_nowait()
         except queue.Empty:
-            if self.update_thread is not None and self.update_thread.is_alive():
+            if self.checker.busy:
                 if self.panel is not None:
                     try:
                         self.panel.after(100, self._poll_update_queue)
                     except tk.TclError:
                         pass
-            else:
-                # The worker ended without a result (or failed to start);
-                # do not keep polling forever.
-                manual = self.update_check_is_manual
-                self.update_thread = None
-                self.update_check_is_manual = False
-                self._set_update_button_running(False)
-                if manual:
-                    self._set_update_status(
-                        "Could not check for updates. Try again later."
-                    )
-                self._schedule_update_check(UPDATE_CHECK_INTERVAL_MS)
-            return
-
-        manual = self.update_check_is_manual
-        self.update_thread = None
-        self.update_check_is_manual = False
-        self._set_update_button_running(False)
-        if not manual and not self._update_check_enabled():
-            if not self.update_info_from_manual:
-                self.update_info = None
-            self._refresh_update_hint()
-            return
-        if result is not None and is_newer(result.version, self.version):
-            self.update_info = result
-            self.update_info_from_manual = manual
-            self._refresh_update_hint()
+                return
+            # The worker ended without a result (or failed to start);
+            # do not keep polling forever.
+            manual = self.checker.abandon()
+            self._set_update_button_running(False)
             if manual:
-                self._set_update_status(self._update_link_text(result), link=True)
-        elif manual:
-            if result is not None:
-                # A successful manual check found no newer release.
-                self.update_info = None
-                self.update_info_from_manual = False
-                self._refresh_update_hint()
-                self._set_update_status("You are up to date.")
-            else:
-                # Keep any previously known update when the request failed.
                 self._set_update_status(
                     "Could not check for updates. Try again later."
                 )
+            self._schedule_update_check(UPDATE_CHECK_INTERVAL_MS)
+            return
+
+        action, manual = self.checker.apply_result(result)
+        self._set_update_button_running(False)
+        if action == "disabled":
+            self._refresh_update_hint()
+            return
+        if action == "update":
+            self._refresh_update_hint()
+            if manual:
+                self._set_update_status(
+                    self._update_link_text(self.checker.info), link=True
+                )
+        elif action == "uptodate":
+            # A successful manual check found no newer release.
+            self._refresh_update_hint()
+            self._set_update_status("You are up to date.")
+        elif action == "failed":
+            # Keep any previously known update when the request failed.
+            self._set_update_status(
+                "Could not check for updates. Try again later."
+            )
         self._schedule_update_check(UPDATE_CHECK_INTERVAL_MS)
 
     def _refresh_update_hint(self) -> None:
         if self.details_update is None or self.details_update_label is None:
             return
         info = (
-            self.update_info
-            if self.update_info is not None
-            and (self._update_check_enabled() or self.update_info_from_manual)
+            self.checker.info
+            if self.checker.info is not None
+            and (self._update_check_enabled() or self.checker.info_from_manual)
             else None
         )
         if info is None:
@@ -454,8 +419,8 @@ class PluginUI:
             pass
 
     def _open_update_release(self) -> None:
-        if self.update_info is not None:
-            _open_url(self.update_info.url)
+        if self.checker.info is not None:
+            _open_url(self.checker.info.url)
 
     # -- main window panel ----------------------------------------------
 
@@ -558,6 +523,29 @@ class PluginUI:
         if width <= 1:
             return
         self._fit_panel_text(label, full_text, width - 4)
+
+    def _haul_row(
+        self, parent: tk.Misc, target: Target, name_limit: int
+    ) -> tuple[tk.Frame, tk.Label]:
+        """Row with the shared name/kind/tonnage cells; caller adds columns."""
+        row = tk.Frame(parent)
+        row.pack(fill="x", pady=1)
+        row.columnconfigure(0, weight=1)
+        name_label = tk.Label(row, text=_short(target.label, name_limit), anchor="w")
+        name_label.grid(row=0, column=0, sticky="ew")
+        tk.Label(row, text=target.kind_label, width=17, anchor="w").grid(
+            row=0, column=1, sticky="w", padx=(8, 0)
+        )
+        tk.Label(row, text=f"{format_number(target.tons)} t", width=10, anchor="e").grid(
+            row=0, column=2, sticky="e", padx=(8, 8)
+        )
+
+        def fit(_event: Optional[tk.Event] = None, r=row, l=name_label, t=target.label) -> None:
+            self._fit_row_label(r, l, t)
+
+        row.bind("<Configure>", fit, add="+")
+        row.after_idle(fit)
+        return row, name_label
 
     def _refresh_panel(self) -> None:
         if self.panel_rows is None or self.panel_total is None or self.panel_more is None:
@@ -723,9 +711,7 @@ class PluginUI:
         self._history_sig = None
         self._refresh_details()
 
-    def _update_details_tabs(self) -> None:
-        targets = len(self._targets())
-        history = len(self._history())
+    def _update_details_tabs(self, targets: int, history: int) -> None:
         if self.tab_targets is not None:
             try:
                 self.tab_targets.configure(text=f"Active hauls ({targets})")
@@ -798,17 +784,18 @@ class PluginUI:
     def _refresh_details(self) -> None:
         if self.details is None or not self.details.winfo_exists():
             return
-        self._refresh_target_rows()
-        self._refresh_history_rows()
-        self._update_details_tabs()
+        targets = self._targets()
+        history = self._history()
+        self._refresh_target_rows(targets)
+        self._refresh_history_rows(history)
+        self._update_details_tabs(len(targets), len(history))
         self._refresh_update_hint()
 
-    def _refresh_target_rows(self) -> None:
+    def _refresh_target_rows(self, targets: List[Target]) -> None:
         if self.target_rows is None or self.details_total is None:
             return
 
         _clear(self.target_rows)
-        targets = self._targets()
         self.details_total.configure(
             text=f"Total: {format_number(sum(target.tons for target in targets))} t"
         )
@@ -823,18 +810,7 @@ class PluginUI:
             counts[target.market_id] = counts.get(target.market_id, 0) + 1
 
         for target in targets:
-            row = tk.Frame(self.target_rows)
-            row.pack(fill="x", pady=1)
-            row.columnconfigure(0, weight=1)
-
-            name_label = tk.Label(row, text=_short(target.label, 32), anchor="w")
-            name_label.grid(row=0, column=0, sticky="ew")
-            tk.Label(row, text=target.kind_label, width=17, anchor="w").grid(
-                row=0, column=1, sticky="w", padx=(8, 0)
-            )
-            tk.Label(row, text=f"{format_number(target.tons)} t", width=10, anchor="e").grid(
-                row=0, column=2, sticky="e", padx=(8, 8)
-            )
+            row, _name = self._haul_row(self.target_rows, target, 32)
             tk.Button(
                 row,
                 text="Report",
@@ -859,25 +835,13 @@ class PluginUI:
                     font="TkSmallCaptionFont",
                 ).grid(row=1, column=0, sticky="w")
 
-            row.bind(
-                "<Configure>",
-                lambda _event, r=row, l=name_label, t=target.label: (
-                    self._fit_row_label(r, l, t)
-                ),
-                add="+",
-            )
-            row.after_idle(
-                lambda r=row, l=name_label, t=target.label: self._fit_row_label(r, l, t)
-            )
-
         _bind_wheel(self.target_rows, self.target_wheel)
         _apply_theme(self.target_rows)
 
-    def _refresh_history_rows(self) -> None:
+    def _refresh_history_rows(self, history: List[Dict[str, Any]]) -> None:
         if self.history_rows is None:
             return
 
-        history = self._history()
         signature = tuple(str(entry.get("id", "")) for entry in history)
         if signature == self._history_sig:
             return
@@ -893,18 +857,7 @@ class PluginUI:
         for entry in history:
             snapshot = entry.get("target") or {}
             target = Target.from_dict(snapshot)
-            row = tk.Frame(self.history_rows)
-            row.pack(fill="x", pady=1)
-            row.columnconfigure(0, weight=1)
-
-            name_label = tk.Label(row, text=_short(target.label, 24), anchor="w")
-            name_label.grid(row=0, column=0, sticky="ew")
-            tk.Label(row, text=target.kind_label, width=17, anchor="w").grid(
-                row=0, column=1, sticky="w", padx=(8, 0)
-            )
-            tk.Label(row, text=f"{format_number(target.tons)} t", width=10, anchor="e").grid(
-                row=0, column=2, sticky="e", padx=(8, 8)
-            )
+            row, _name = self._haul_row(self.history_rows, target, 24)
             reported = str(entry.get("reason") or "") == "reported"
             tk.Label(
                 row,
@@ -929,17 +882,6 @@ class PluginUI:
                     hid, label
                 ),
             ).grid(row=0, column=6, sticky="e", padx=(4, 0))
-
-            row.bind(
-                "<Configure>",
-                lambda _event, r=row, l=name_label, t=target.label: (
-                    self._fit_row_label(r, l, t)
-                ),
-                add="+",
-            )
-            row.after_idle(
-                lambda r=row, l=name_label, t=target.label: self._fit_row_label(r, l, t)
-            )
 
         _bind_wheel(self.history_rows, self.history_wheel)
         _apply_theme(self.history_rows)
@@ -1339,19 +1281,13 @@ class PluginUI:
         status_label.grid(row=9, column=0, sticky="w", pady=(2, 0))
         status_label.grid_remove()
         self.update_status = status_label
-        if (
-            self.update_thread is not None
-            and self.update_thread.is_alive()
-            and self.update_check_is_manual
-        ):
+        if self.checker.busy and self.checker.manual:
             self._set_update_status("Checking GitHub for a new version\u2026")
-        elif self.update_info is not None and (
-            self._update_check_enabled() or self.update_info_from_manual
+        elif self.checker.info is not None and (
+            self._update_check_enabled() or self.checker.info_from_manual
         ):
-            self._set_update_status(self._update_link_text(self.update_info), link=True)
-        self._set_update_button_running(
-            self.update_thread is not None and self.update_thread.is_alive()
-        )
+            self._set_update_status(self._update_link_text(self.checker.info), link=True)
+        self._set_update_button_running(self.checker.busy)
 
         # Footer: version and repository link, left aligned and kept at the
         # bottom of the page.  EDMC does not theme the plugin prefs tab, so use
@@ -1415,13 +1351,14 @@ class PluginUI:
             self._cancel_update_check()
             # Keep a manually found update visible even when automatic checks
             # are turned off; it came from an explicit user action.
-            if not self.update_info_from_manual:
-                self.update_info = None
+            if not self.checker.info_from_manual:
+                self.checker.info = None
             self._refresh_update_hint()
 
     # -- lifecycle -------------------------------------------------------
 
     def close(self) -> None:
         self._closed = True
+        self.checker.closed = True
         self._cancel_update_check()
         self.close_details()

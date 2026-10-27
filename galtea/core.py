@@ -13,7 +13,13 @@ from .journal import (
     is_squadron_callsign,
     station_from_entry,
 )
-from .model import CARRIER_KINDS, KIND_CARRIER, KIND_CONSTRUCTION, KIND_SQUADRON
+from .model import (
+    CARRIER_KINDS,
+    KIND_CARRIER,
+    KIND_CONSTRUCTION,
+    KIND_SQUADRON,
+    construction_placeholder,
+)
 from .store import HaulStore
 
 # Entries that tell us where the commander is docked.
@@ -311,7 +317,7 @@ class Tracker:
             station_type = context.station_type
             display_name = context.display_name
         else:
-            name = (context.name if context else "") or (station or "") or f"Construction site {market_id}"
+            name = (context.name if context else "") or (station or "") or construction_placeholder(market_id)
             system_name = (context.system if context else "") or str(system or "")
             station_type = context.station_type if context else ""
             display_name = context.display_name if context else ""

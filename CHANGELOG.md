@@ -5,6 +5,22 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
+## [Unreleased]
+
+### Added
+
+- Save failures and moved-aside corrupt data files are now logged to the EDMC
+  log instead of staying silent.
+
+### Changed
+
+- The carrier name cache forgets the least recently named carrier when it is
+  over its limit, so busy carriers keep their display names.
+- The update-check scheduling logic moved into a Tk-free `UpdateChecker` in
+  `galtea/update.py` and is covered by tests.
+- Internal cleanups: shared details-row builder, single data fetch per
+  refresh, dead constants removed.
+
 ## [0.6.1] - 2026-10-26
 
 ### Added
