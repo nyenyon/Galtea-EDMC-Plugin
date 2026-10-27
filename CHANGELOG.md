@@ -5,12 +5,13 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
-## [Unreleased]
+## [0.6.2] - 2026-10-27
 
 ### Added
 
 - Save failures and moved-aside corrupt data files are now logged to the EDMC
-  log instead of staying silent.
+  log instead of staying silent, and every corrupt backup is kept with its own
+  numbered file name.
 
 ### Changed
 
