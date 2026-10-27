@@ -22,6 +22,11 @@ Versions match `VERSION` in `load.py`.
 - Internal cleanups: shared details-row builder, single data fetch per
   refresh, dead constants removed.
 
+### Documentation
+
+- The README now describes the numbered corrupt file backups and the new
+  log output for save failures.
+
 ## [0.6.1] - 2026-10-26
 
 ### Added
