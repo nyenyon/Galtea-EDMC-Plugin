@@ -30,8 +30,10 @@ from .store import HaulStore
 from .update import ReleaseInfo, UpdateChecker
 
 PANEL_ROWS = 3
+SETTING_ENABLED = "galtea_enabled"
 SETTING_DISCORD_USER = "galtea_discord_user"
 SETTING_UPDATE_CHECK = "galtea_update_check"
+ENABLED_DEFAULT = "1"
 UPDATE_CHECK_DEFAULT = "0"
 UPDATE_CHECK_DELAY_MS = 2500
 UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
@@ -68,6 +70,12 @@ def _set_setting(key: str, value: str) -> None:
             save()
     except Exception:  # noqa: BLE001 - saving prefs must never fail loudly
         pass
+
+
+def plugin_enabled() -> bool:
+    """Master switch: the whole plugin is off when the setting is disabled."""
+    value = str(_get_setting(SETTING_ENABLED, ENABLED_DEFAULT)).strip().lower()
+    return value in {"1", "true", "yes", "on"}
 
 
 def _open_url(url: str) -> None:
@@ -195,9 +203,11 @@ class PluginUI:
 
         self.report_window: Optional[tk.Toplevel] = None
         self.report_copied = False
+        self.enable_var: Optional[tk.BooleanVar] = None
         self.discord_user_var: Optional[tk.StringVar] = None
         self.update_check_var: Optional[tk.BooleanVar] = None
         self.update_check_button: Optional[Any] = None
+        self.prefs_finish_button: Optional[Any] = None
         self.update_status: Optional[Any] = None
         self.link_font: Optional[tkfont.Font] = None
         self._panel_fonts: Dict[str, tkfont.Font] = {}
@@ -291,6 +301,7 @@ class PluginUI:
         if (
             self._closed
             or not self.version
+            or not plugin_enabled()
             or not self._update_check_enabled()
             or self.panel is None
         ):
@@ -340,6 +351,8 @@ class PluginUI:
 
     def _manual_update_check(self) -> None:
         """Run an explicit check, even when automatic checks are disabled."""
+        # Works while the master switch is off too: an explicit user request
+        # to check the version is not a plugin feature that needs tracking.
         if self._closed:
             return
         if self.panel is None:
@@ -426,8 +439,37 @@ class PluginUI:
 
     def build_panel(self, parent: tk.Misc) -> tk.Frame:
         self.parent = parent
-        frame = tk.Frame(parent)
+        self.panel = tk.Frame(parent)
+        self._rebuild_panel()
+        return self.panel
+
+    def _rebuild_panel(self) -> None:
+        """Draw either the live panel or the disabled hint into self.panel."""
+        if self.panel is None:
+            return
+        frame = self.panel
+        _clear(frame)
         frame.columnconfigure(0, weight=1)
+
+        if not plugin_enabled():
+            # Everything stays wired up but idle: no rows, no details window
+            # and no update checks until the switch goes back on.
+            self.panel_rows = None
+            self.panel_more = None
+            self.panel_total = None
+            self._cancel_update_check()
+            tk.Label(
+                frame,
+                text="Galtea Haul Tracker is disabled.",
+                justify="left",
+            ).grid(row=0, column=0, sticky="w")
+            # Mirror EDMC's per-plugin separator (a themed highlight frame) so
+            # the next EDMC control stays visually separate from this panel.
+            tk.Frame(frame, highlightthickness=1).grid(
+                row=1, column=0, sticky="ew", pady=(8, 6)
+            )
+            _apply_theme(frame)
+            return
 
         tk.Label(frame, text="Galtea Haul Tracker").grid(row=0, column=0, sticky="w")
 
@@ -450,11 +492,9 @@ class PluginUI:
             row=5, column=0, sticky="ew", pady=(8, 6)
         )
 
-        self.panel = frame
         self.refresh()
         _apply_theme(frame)
         self._schedule_update_check(UPDATE_CHECK_DELAY_MS)
-        return frame
 
     def refresh(self) -> None:
         self._refresh_panel()
@@ -1159,8 +1199,18 @@ class PluginUI:
         if self.store.reset_target(self.cmdr_key, target_id, now_iso(), reason=reason):
             self.refresh()
 
+    def _disable_prefs_finish(self) -> None:
+        """Grey the settings button after all hauls are finished."""
+        if self.prefs_finish_button is None:
+            return
+        try:
+            if self.prefs_finish_button.winfo_exists():
+                self.prefs_finish_button.configure(state=tk.DISABLED)
+        except tk.TclError:
+            pass
+
     def _reset_all(self) -> None:
-        if not self.cmdr_key or not self._targets():
+        if not self.cmdr_key or not self._targets() or not plugin_enabled():
             return
         decision = self._ask_finish_choice(
             "Finish all hauls",
@@ -1174,6 +1224,7 @@ class PluginUI:
         reason = "reported" if decision == "reported" else "unreported"
         if self.store.reset_all(self.cmdr_key, now_iso(), reason=reason):
             self.refresh()
+            self._disable_prefs_finish()
 
     def _restore(self, history_id: Optional[str]) -> None:
         if not self.cmdr_key or not history_id:
@@ -1217,26 +1268,44 @@ class PluginUI:
         frame = nb.Frame(parent)
         frame.columnconfigure(0, weight=1)
 
+        def group(row: int, title: str) -> None:
+            """Thin separator plus small heading, giving the page real sections."""
+            ttk.Separator(frame, orient="horizontal").grid(
+                row=row, column=0, sticky="ew", pady=(14, 0)
+            )
+            nb.Label(frame, text=title, font="TkHeadingFont").grid(
+                row=row + 1, column=0, sticky="w", pady=(4, 2)
+            )
+
         nb.Label(frame, text="Galtea Haul Tracker").grid(row=0, column=0, sticky="w")
-        description = nb.Label(
+
+        # -- General ------------------------------------------------------
+        group(1, "General")
+        self.enable_var = tk.BooleanVar(master=frame, value=plugin_enabled())
+        nb.Checkbutton(
+            frame,
+            text="Enable Galtea Haul Tracker",
+            variable=self.enable_var,
+        ).grid(row=3, column=0, sticky="w")
+        enable_hint = nb.Label(
             frame,
             text=(
-                "Tracks tonnage sold to fleet carriers and squadron carriers, and "
-                "commodities delivered to construction sites.\n"
-                f"Data files: {self.store.path} (hauls) and "
-                f"{self.store.cache_path} (carrier names)"
+                "Master switch. Off = no tracking and no background update "
+                "checks; Check now keeps working. "
+                "Your saved data stays untouched."
             ),
             justify="left",
             wraplength=420,
+            font="TkSmallCaptionFont",
         )
-        description.grid(row=1, column=0, sticky="w", pady=(4, 8))
+        enable_hint.grid(row=4, column=0, sticky="w", pady=(2, 0))
 
-        nb.Label(frame, text="Discord user for the Report command").grid(
-            row=2, column=0, sticky="w"
-        )
+        # -- Report command -----------------------------------------------
+        group(5, "Report command")
+        nb.Label(frame, text="Discord user").grid(row=7, column=0, sticky="w")
         self.discord_user_var = tk.StringVar(master=frame, value=self.discord_user())
         ttk.Entry(frame, textvariable=self.discord_user_var, width=1).grid(
-            row=3, column=0, sticky="ew", pady=(2, 2)
+            row=8, column=0, sticky="ew", pady=(2, 2)
         )
         hint = nb.Label(
             frame,
@@ -1246,13 +1315,34 @@ class PluginUI:
             ),
             justify="left",
             wraplength=420,
+            font="TkSmallCaptionFont",
         )
-        hint.grid(row=4, column=0, sticky="w", pady=(0, 8))
+        hint.grid(row=9, column=0, sticky="w")
 
-        nb.Button(frame, text="Finish all hauls\u2026", command=self._reset_all).grid(
-            row=5, column=0, sticky="w"
+        # -- Haul data ------------------------------------------------------
+        group(10, "Haul data")
+        data_label = nb.Label(
+            frame,
+            text=f"Hauls and carrier names are stored in {self.store.path.parent}",
+            justify="left",
+            wraplength=420,
+            font="TkSmallCaptionFont",
         )
+        data_label.grid(row=12, column=0, sticky="w")
+        # Same rule as the details header: grey while there is nothing to
+        # finish; also grey while the whole plugin is disabled.
+        # shortcut: it greys on build and after finishing all hauls, but does
+        # not re-enable when new hauls arrive while the dialog stays open.
+        self.prefs_finish_button = nb.Button(
+            frame,
+            text="Finish all hauls\u2026",
+            command=self._reset_all,
+            state=tk.NORMAL if plugin_enabled() and self._targets() else tk.DISABLED,
+        )
+        self.prefs_finish_button.grid(row=13, column=0, sticky="w", pady=(6, 0))
 
+        # -- Updates ------------------------------------------------------
+        group(14, "Updates")
         self.update_check_var = tk.BooleanVar(
             master=frame, value=self._update_check_enabled()
         )
@@ -1260,27 +1350,30 @@ class PluginUI:
             frame,
             text="Check GitHub for new versions",
             variable=self.update_check_var,
-        ).grid(row=6, column=0, sticky="w", pady=(12, 0))
+        ).grid(row=16, column=0, sticky="w")
+        button_row = nb.Frame(frame)
+        button_row.grid(row=17, column=0, sticky="w", pady=(6, 0))
+        self.update_check_button = nb.Button(
+            button_row, text="Check now", command=self._manual_update_check
+        )
+        self.update_check_button.grid(row=0, column=0)
+        status_label = nb.Label(
+            button_row, text="", justify="left", wraplength=420, font="TkSmallCaptionFont"
+        )
+        status_label.grid(row=0, column=1, sticky="w", padx=(8, 0))
+        status_label.grid_remove()
+        self.update_status = status_label
         update_hint = nb.Label(
             frame,
             text=(
-                "Checks the latest GitHub release in the background. Only release "
-                "metadata is fetched; no commander or haul data is sent. "
-                "Use Check now for an immediate check."
+                "Checks the latest GitHub release in the background. Only "
+                "release metadata is fetched; no commander or haul data is sent."
             ),
             justify="left",
             wraplength=420,
+            font="TkSmallCaptionFont",
         )
-        update_hint.grid(row=7, column=0, sticky="w", pady=(0, 8))
-
-        self.update_check_button = nb.Button(
-            frame, text="Check now", command=self._manual_update_check
-        )
-        self.update_check_button.grid(row=8, column=0, sticky="w", pady=(4, 0))
-        status_label = nb.Label(frame, text="", justify="left", wraplength=420)
-        status_label.grid(row=9, column=0, sticky="w", pady=(2, 0))
-        status_label.grid_remove()
-        self.update_status = status_label
+        update_hint.grid(row=18, column=0, sticky="w", pady=(2, 0))
         if self.checker.busy and self.checker.manual:
             self._set_update_status("Checking GitHub for a new version\u2026")
         elif self.checker.info is not None and (
@@ -1292,9 +1385,9 @@ class PluginUI:
         # Footer: version and repository link, left aligned and kept at the
         # bottom of the page.  EDMC does not theme the plugin prefs tab, so use
         # nb widgets (their default colours) instead of theme.update().
-        frame.rowconfigure(10, weight=1)
+        frame.rowconfigure(19, weight=1)
         footer = tk.Frame(frame)
-        footer.grid(row=11, column=0, sticky="w", pady=(12, 0))
+        footer.grid(row=20, column=0, sticky="w", pady=(12, 0))
         version_label = nb.Label(footer, text=f"Version {self.version or 'unknown'}")
         version_label.pack(side="left")
         background = version_label.cget("background")
@@ -1313,7 +1406,7 @@ class PluginUI:
         def fit_width(event: tk.Event) -> None:
             """Keep the long labels inside the page when the dialog is resized."""
             width = max(int(event.width) - 4, 200)
-            for label in (description, hint, update_hint, status_label):
+            for label in (enable_hint, hint, data_label, update_hint, status_label):
                 try:
                     label.configure(wraplength=width)
                 except tk.TclError:
@@ -1330,6 +1423,13 @@ class PluginUI:
 
     def save_prefs(self) -> None:
         """Persist the preferences page; called by EDMC after the dialog."""
+        if self.enable_var is not None:
+            was_enabled = plugin_enabled()
+            _set_setting(SETTING_ENABLED, "1" if self.enable_var.get() else "0")
+            if plugin_enabled() != was_enabled:
+                if not plugin_enabled():
+                    self.close_details()
+                self._rebuild_panel()
         if self.discord_user_var is not None:
             _set_setting(
                 SETTING_DISCORD_USER,

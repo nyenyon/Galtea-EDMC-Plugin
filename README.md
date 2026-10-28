@@ -78,6 +78,7 @@ The plugin needs no third-party packages. It makes no network requests unless yo
 
 The plugin adds a **Galtea Haul Tracker** tab to EDMC's settings:
 
+- **Enable Galtea Haul Tracker** – master switch, on by default. While it is off the plugin is inactive: journal events are ignored, the tracker panel shows only a hint, and background update checks stop. **Check now** still works and reports a found update right in the settings; buttons that would change hauls, such as **Finish all hauls…**, are greyed out. Your saved data stays untouched.
 - **Discord user for the Report command** – the handle used as `user:@name` in the `/addscore` command. The default is the placeholder `@yourdiscordname`, so no real user is credited by accident; set your own handle before reporting. The handle is stored in EDMC's configuration, and the report window reminds you while the placeholder is still in use.
 - **Check GitHub for new versions** – optional and off by default. When enabled, the plugin checks the latest GitHub release in the background on startup and then at most once a day while EDMC is running. **Check now** performs an immediate check, even while automatic checking is off, and shows the result below the button. A found update is also linked at the bottom of the details window. Only release metadata is fetched; no commander or haul data is sent. The plugin never downloads or installs updates automatically.
 - **Finish all hauls…** – applies the same three-way reported choice as the **Finish all hauls** action in the details window.

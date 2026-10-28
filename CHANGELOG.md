@@ -5,6 +5,24 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
+## [0.7.0] - 2026-10-28
+
+### Added
+
+- **Enable Galtea Haul Tracker** master switch in the plugin settings (on by
+  default). While off, journal events are ignored, the panel shows only a
+  hint and background update checks stop. **Check now** still works and shows
+  a found update in the settings; haul buttons such as *Finish all hauls…*
+  are greyed out. Saved data is left untouched.
+
+### Changed
+
+- The settings page is grouped into **General**, **Report command**, **Haul
+  data** and **Updates** with headings, small-print hints and a single
+  `data/` directory path instead of two long file paths.
+- *Finish all hauls…* is disabled when the plugin is off or nothing is
+  active, and greys out immediately after finishing all hauls.
+
 ## [0.6.2] - 2026-10-27
 
 ### Added

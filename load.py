@@ -13,11 +13,11 @@ from typing import Any, Dict, Optional
 
 import tkinter as tk
 
-VERSION = "0.6.2"
+VERSION = "0.7.0"
 
 from galtea.core import Tracker
 from galtea.store import HaulStore
-from galtea.ui import PluginUI
+from galtea.ui import PluginUI, plugin_enabled
 
 logger = logging.getLogger("GalteaHaulTracker")
 
@@ -87,6 +87,8 @@ def journal_entry(
     state: Dict[str, Any],
 ) -> Optional[str]:
     """Called for every new journal entry (on EDMC's Tk main thread)."""
+    if not plugin_enabled():
+        return None
     try:
         _ensure()
         changed = _tracker.process(  # type: ignore[union-attr]
@@ -108,7 +110,8 @@ def plugin_prefs(parent: tk.Misc, cmdr: str, is_beta: bool) -> tk.Widget:
 
 
 def prefs_changed(cmdr: str, is_beta: bool) -> None:
-    _ensure().save()
+    if plugin_enabled():
+        _ensure().save()
     if _ui is not None:
         _ui.save_prefs()
 
