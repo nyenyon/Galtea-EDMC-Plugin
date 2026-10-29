@@ -5,6 +5,16 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
+## [0.7.1] - 2026-10-29
+
+### Changed
+
+- The settings page no longer duplicates *Finish all hauls…*; haul actions
+  live only in the details window.
+- The settings section is now **Game data**: it spells out that the shown
+  `data/` directory holds the commander's game data and is not overwritten
+  by plugin updates.
+
 ## [0.7.0] - 2026-10-28
 
 ### Added

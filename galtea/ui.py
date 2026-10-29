@@ -207,7 +207,6 @@ class PluginUI:
         self.discord_user_var: Optional[tk.StringVar] = None
         self.update_check_var: Optional[tk.BooleanVar] = None
         self.update_check_button: Optional[Any] = None
-        self.prefs_finish_button: Optional[Any] = None
         self.update_status: Optional[Any] = None
         self.link_font: Optional[tkfont.Font] = None
         self._panel_fonts: Dict[str, tkfont.Font] = {}
@@ -1199,16 +1198,6 @@ class PluginUI:
         if self.store.reset_target(self.cmdr_key, target_id, now_iso(), reason=reason):
             self.refresh()
 
-    def _disable_prefs_finish(self) -> None:
-        """Grey the settings button after all hauls are finished."""
-        if self.prefs_finish_button is None:
-            return
-        try:
-            if self.prefs_finish_button.winfo_exists():
-                self.prefs_finish_button.configure(state=tk.DISABLED)
-        except tk.TclError:
-            pass
-
     def _reset_all(self) -> None:
         if not self.cmdr_key or not self._targets() or not plugin_enabled():
             return
@@ -1224,7 +1213,6 @@ class PluginUI:
         reason = "reported" if decision == "reported" else "unreported"
         if self.store.reset_all(self.cmdr_key, now_iso(), reason=reason):
             self.refresh()
-            self._disable_prefs_finish()
 
     def _restore(self, history_id: Optional[str]) -> None:
         if not self.cmdr_key or not history_id:
@@ -1319,30 +1307,33 @@ class PluginUI:
         )
         hint.grid(row=9, column=0, sticky="w")
 
-        # -- Haul data ------------------------------------------------------
-        group(10, "Haul data")
+        # -- Game data ------------------------------------------------------
+        group(10, "Game data")
+        nb.Label(
+            frame, text="This directory stores your commander's game data:"
+        ).grid(row=12, column=0, sticky="w")
         data_label = nb.Label(
             frame,
-            text=f"Hauls and carrier names are stored in {self.store.path.parent}",
+            text=str(self.store.path.parent),
+            justify="left",
+            wraplength=420,
+        )
+        data_label.grid(row=13, column=0, sticky="w", pady=(2, 0))
+        data_hint = nb.Label(
+            frame,
+            text=(
+                "All game data are kept here. "
+                "Updating the plugin does not overwrite this directory — "
+                "your data survives."
+            ),
             justify="left",
             wraplength=420,
             font="TkSmallCaptionFont",
         )
-        data_label.grid(row=12, column=0, sticky="w")
-        # Same rule as the details header: grey while there is nothing to
-        # finish; also grey while the whole plugin is disabled.
-        # shortcut: it greys on build and after finishing all hauls, but does
-        # not re-enable when new hauls arrive while the dialog stays open.
-        self.prefs_finish_button = nb.Button(
-            frame,
-            text="Finish all hauls\u2026",
-            command=self._reset_all,
-            state=tk.NORMAL if plugin_enabled() and self._targets() else tk.DISABLED,
-        )
-        self.prefs_finish_button.grid(row=13, column=0, sticky="w", pady=(6, 0))
+        data_hint.grid(row=14, column=0, sticky="w", pady=(2, 0))
 
         # -- Updates ------------------------------------------------------
-        group(14, "Updates")
+        group(15, "Updates")
         self.update_check_var = tk.BooleanVar(
             master=frame, value=self._update_check_enabled()
         )
@@ -1350,9 +1341,9 @@ class PluginUI:
             frame,
             text="Check GitHub for new versions",
             variable=self.update_check_var,
-        ).grid(row=16, column=0, sticky="w")
+        ).grid(row=17, column=0, sticky="w")
         button_row = nb.Frame(frame)
-        button_row.grid(row=17, column=0, sticky="w", pady=(6, 0))
+        button_row.grid(row=18, column=0, sticky="w", pady=(6, 0))
         self.update_check_button = nb.Button(
             button_row, text="Check now", command=self._manual_update_check
         )
@@ -1373,7 +1364,7 @@ class PluginUI:
             wraplength=420,
             font="TkSmallCaptionFont",
         )
-        update_hint.grid(row=18, column=0, sticky="w", pady=(2, 0))
+        update_hint.grid(row=19, column=0, sticky="w", pady=(2, 0))
         if self.checker.busy and self.checker.manual:
             self._set_update_status("Checking GitHub for a new version\u2026")
         elif self.checker.info is not None and (
@@ -1385,9 +1376,9 @@ class PluginUI:
         # Footer: version and repository link, left aligned and kept at the
         # bottom of the page.  EDMC does not theme the plugin prefs tab, so use
         # nb widgets (their default colours) instead of theme.update().
-        frame.rowconfigure(19, weight=1)
+        frame.rowconfigure(20, weight=1)
         footer = tk.Frame(frame)
-        footer.grid(row=20, column=0, sticky="w", pady=(12, 0))
+        footer.grid(row=21, column=0, sticky="w", pady=(12, 0))
         version_label = nb.Label(footer, text=f"Version {self.version or 'unknown'}")
         version_label.pack(side="left")
         background = version_label.cget("background")
@@ -1406,7 +1397,14 @@ class PluginUI:
         def fit_width(event: tk.Event) -> None:
             """Keep the long labels inside the page when the dialog is resized."""
             width = max(int(event.width) - 4, 200)
-            for label in (enable_hint, hint, data_label, update_hint, status_label):
+            for label in (
+                enable_hint,
+                hint,
+                data_label,
+                data_hint,
+                update_hint,
+                status_label,
+            ):
                 try:
                     label.configure(wraplength=width)
                 except tk.TclError:

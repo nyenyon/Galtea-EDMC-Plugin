@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 
 import tkinter as tk
 
-VERSION = "0.7.0"
+VERSION = "0.7.1"
 
 from galtea.core import Tracker
 from galtea.store import HaulStore
