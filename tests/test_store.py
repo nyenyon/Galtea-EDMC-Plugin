@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from galtea.model import KIND_CARRIER, KIND_FLEET, KIND_SQUADRON
@@ -37,6 +38,7 @@ class StoreTest(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory()
         self.path = Path(self.tempdir.name) / "haul.json"
         self.cache_path = self.path.with_name("carrier_cache.json")
+        self.history_path = self.path.with_name("haul_history.json")
         self.store = HaulStore(self.path)
 
     def tearDown(self) -> None:
@@ -111,6 +113,117 @@ class StoreTest(unittest.TestCase):
         reloaded = HaulStore(self.path)
         self.assertEqual(len(reloaded.history("F123")), 1)
         self.assertEqual(reloaded.total("F123"), 0)
+
+    def test_history_lives_in_its_own_file(self) -> None:
+        self.add_carrier(1320)
+        self.store.reset_target(
+            "F123",
+            self.store.targets("F123")[0].id,
+            "2026-01-02T08:00:00Z",
+            reason="reported",
+        )
+
+        hauls = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertNotIn("history", hauls["cmdrs"]["F123"])
+        self.assertEqual(hauls["version"], SCHEMA_VERSION)
+
+        history = json.loads(self.history_path.read_text(encoding="utf-8"))
+        entries = history["cmdrs"]["F123"]["history"]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["reason"], "reported")
+        self.assertEqual(entries[0]["target"]["tons"], 1320)
+
+    def test_restore_moves_history_back_into_the_active_file(self) -> None:
+        self.add_carrier(1320)
+        batch_id = self.store.targets("F123")[0].id
+        self.store.reset_target("F123", batch_id)
+        history_id = self.store.history("F123")[0]["id"]
+
+        store = HaulStore(self.path)
+        self.assertEqual(store.total("F123"), 0)
+        self.assertTrue(store.restore("F123", history_id))
+        self.assertEqual(store.total("F123"), 1320)
+        self.assertEqual(store.history("F123"), [])
+
+        hauls = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(list(hauls["cmdrs"]["F123"]["targets"]), [batch_id])
+        history = json.loads(self.history_path.read_text(encoding="utf-8"))
+        self.assertEqual(history["cmdrs"].get("F123", {}).get("history", []), [])
+
+    def test_history_survives_corrupt_tracker_file(self) -> None:
+        self.add_carrier(1320)
+        self.store.reset_target("F123", self.store.targets("F123")[0].id)
+        self.path.write_text("{broken", encoding="utf-8")
+
+        store = HaulStore(self.path)
+        self.assertEqual(store.total("F123"), 0)
+        self.assertEqual(len(store.history("F123")), 1)
+        self.assertTrue(
+            store.restore("F123", store.history("F123")[0]["id"])
+        )
+        self.assertEqual(store.total("F123"), 1320)
+
+    def test_deliveries_are_logged_per_event(self) -> None:
+        self.store.add("F123", "Test", tons=100, timestamp="2026-01-01T10:00:00Z", **CARRIER)
+        self.store.add("F123", "Test", tons=30, timestamp="2026-01-01T11:00:00Z", **CARRIER)
+
+        hauls = json.loads(self.path.read_text(encoding="utf-8"))
+        target = next(iter(hauls["cmdrs"]["F123"]["targets"].values()))
+        self.assertEqual(target["tons"], 130)
+        self.assertEqual(
+            [(d["tons"], d["timestamp"]) for d in target["deliveries"]],
+            [(100, "2026-01-01T10:00:00Z"), (30, "2026-01-01T11:00:00Z")],
+        )
+
+    def test_delivery_log_is_capped_keeping_the_newest(self) -> None:
+        with mock.patch("galtea.store.DELIVERY_LIMIT", 5):
+            for minute in range(8):
+                self.store.add(
+                    "F123",
+                    "Test",
+                    tons=1,
+                    timestamp=f"2026-01-01T11:{minute:02d}:00Z",
+                    **CARRIER,
+                )
+
+        deliveries = self.store.targets("F123")[0].deliveries
+        stamps = [d["timestamp"] for d in deliveries]
+        self.assertEqual(len(stamps), 5)
+        self.assertEqual(stamps[0], "2026-01-01T11:03:00Z")
+        self.assertEqual(stamps[-1], "2026-01-01T11:07:00Z")
+        # the summed total keeps counting every delivery
+        self.assertEqual(self.store.total("F123"), 8)
+
+    def test_delivery_log_merges_same_landing(self) -> None:
+        self.store.add(
+            "F123", "Test", tons=100, timestamp="2026-01-01T10:01:00Z", session="s1", **CARRIER
+        )
+        self.store.add(
+            "F123", "Test", tons=200, timestamp="2026-01-01T10:05:00Z", session="s1", **CARRIER
+        )
+        self.store.add(
+            "F123", "Test", tons=50, timestamp="2026-01-01T12:00:00Z", session="s2", **CARRIER
+        )
+
+        deliveries = self.store.targets("F123")[0].deliveries
+        self.assertEqual(
+            [(d["tons"], d["timestamp"]) for d in deliveries],
+            [(300, "2026-01-01T10:01:00Z"), (50, "2026-01-01T12:00:00Z")],
+        )
+        self.assertEqual(self.store.total("F123"), 350)
+
+    def test_restore_keeps_delivery_log(self) -> None:
+        self.store.add("F123", "Test", tons=100, timestamp="2026-01-01T10:00:00Z", **CARRIER)
+        self.store.add("F123", "Test", tons=40, timestamp="2026-01-01T10:05:00Z", **CARRIER)
+        batch_id = self.store.targets("F123")[0].id
+        self.store.reset_target("F123", batch_id)
+        history_id = self.store.history("F123")[0]["id"]
+
+        store = HaulStore(self.path)
+        self.assertTrue(store.restore("F123", history_id))
+        restored = store.targets("F123")[0]
+        self.assertEqual(restored.id, batch_id)
+        self.assertEqual([d["tons"] for d in restored.deliveries], [100, 40])
 
     def test_restore_returns_entry_and_clears_history(self) -> None:
         self.add_carrier(1320)
@@ -313,51 +426,6 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(self.store.carrier_name("F123", 1)["name"], "Home Carrier")
         self.assertEqual(self.store.carrier_name("F123", 2), {})
 
-    def test_legacy_carrier_cache_is_migrated(self) -> None:
-        self.path.write_text(
-            json.dumps(
-                {
-                    "version": 2,
-                    "cmdrs": {
-                        "F123": {
-                            "name": "Test",
-                            "targets": {},
-                            "history": [],
-                            "carriers": {
-                                "3709409280": {
-                                    "market_id": 3709409280,
-                                    "name": "Test Carrier",
-                                    "callsign": "T3S-TIE",
-                                }
-                            },
-                        }
-                    },
-                }
-            ),
-            encoding="utf-8",
-        )
-
-        store = HaulStore(self.path)
-        self.assertEqual(
-            store.carrier_name("F123", 3709409280)["name"], "Test Carrier"
-        )
-
-        hauls = json.loads(self.path.read_text(encoding="utf-8"))
-        self.assertEqual(hauls["version"], SCHEMA_VERSION)
-        self.assertNotIn("carriers", hauls["cmdrs"]["F123"])
-
-        cache = json.loads(self.cache_path.read_text(encoding="utf-8"))
-        self.assertEqual(
-            cache["cmdrs"]["F123"]["carriers"]["3709409280"]["name"],
-            "Test Carrier",
-        )
-
-        reloaded = HaulStore(self.path)
-        self.assertEqual(
-            reloaded.carrier_name("F123", callsign="t3s-tie")["name"],
-            "Test Carrier",
-        )
-
     def test_corrupt_carrier_cache_is_moved_aside(self) -> None:
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
         self.cache_path.write_text("{not json", encoding="utf-8")
@@ -392,55 +460,6 @@ class StoreTest(unittest.TestCase):
         self.assertTrue(self.store.update_target("F123", CARRIER["market_id"], kind=KIND_SQUADRON))
         self.assertEqual(self.store.targets("F123")[0].kind, KIND_SQUADRON)
 
-    def test_load_migrates_old_file_to_batch_ids(self) -> None:
-        self.path.write_text(
-            json.dumps(
-                {
-                    "version": 1,
-                    "cmdrs": {
-                        "F123": {
-                            "name": "Test",
-                            "targets": {
-                                str(CARRIER["market_id"]): {
-                                    "market_id": CARRIER["market_id"],
-                                    "name": "T3S-TIE",
-                                    "kind": KIND_FLEET,
-                                    "tons": 1320,
-                                    "first_delivery": "2026-01-01T10:00:00Z",
-                                    "last_delivery": "2026-01-01T10:00:00Z",
-                                }
-                            },
-                            "history": [
-                                {
-                                    "id": "old-entry",
-                                    "deleted_at": "2026-01-02T08:00:00Z",
-                                    "reason": "deleted",
-                                    "target": {
-                                        "market_id": 1,
-                                        "name": "Old depot",
-                                        "kind": "construction",
-                                        "tons": 10,
-                                    },
-                                }
-                            ],
-                        }
-                    },
-                }
-            ),
-            encoding="utf-8",
-        )
-
-        store = HaulStore(self.path)
-        target = store.targets("F123")[0]
-        self.assertTrue(target.id)
-        self.assertEqual(store.total("F123"), 1320)
-
-        raw = json.loads(self.path.read_text(encoding="utf-8"))
-        record = raw["cmdrs"]["F123"]
-        self.assertEqual(raw["version"], SCHEMA_VERSION)
-        self.assertEqual(list(record["targets"]), [target.id])
-        self.assertTrue(record["history"][0]["target"]["id"])
-
     def test_corrupt_file_is_moved_aside(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text("{not json", encoding="utf-8")
@@ -464,27 +483,55 @@ class StoreTest(unittest.TestCase):
             self.path.with_suffix(".corrupt.1").read_text(encoding="utf-8"), "{second"
         )
 
-    def test_load_corrects_squadron_carrier_stored_as_fleet(self) -> None:
-        self.add_carrier()
-        raw = json.loads(self.path.read_text(encoding="utf-8"))
-        target = next(iter(raw["cmdrs"]["F123"]["targets"].values()))
-        target["name"] = "0822"
-        self.path.write_text(json.dumps(raw), encoding="utf-8")
-
-        store = HaulStore(self.path)
-        fixed = store.targets("F123")[0]
-        self.assertEqual(fixed.kind, KIND_SQUADRON)
-        self.assertEqual(fixed.kind_label, "Squadron carrier")
-
-        persisted = json.loads(self.path.read_text(encoding="utf-8"))
-        self.assertEqual(
-            next(iter(persisted["cmdrs"]["F123"]["targets"].values()))["kind"],
-            KIND_SQUADRON,
+    def test_old_plugin_data_version_is_ignored(self) -> None:
+        self.path.write_text(
+            json.dumps(
+                {
+                    "version": 3,
+                    "cmdrs": {
+                        "F123": {
+                            "name": "Test",
+                            "targets": {
+                                "abc": {
+                                    "id": "abc",
+                                    "market_id": CARRIER["market_id"],
+                                    "name": "T3S-TIE",
+                                    "kind": KIND_FLEET,
+                                    "tons": 1320,
+                                }
+                            },
+                            "history": [],
+                        }
+                    },
+                    "last_commander": "F123",
+                }
+            ),
+            encoding="utf-8",
         )
 
-    def test_load_keeps_fleet_carriers_with_three_part_callsign(self) -> None:
-        self.add_carrier()
-        self.assertEqual(HaulStore(self.path).targets("F123")[0].kind, KIND_FLEET)
+        store = HaulStore(self.path)
+        self.assertEqual(store.targets("F123"), [])
+        self.assertEqual(store.last_commander(), "")
+        # the old file survives as recoverable evidence
+        self.assertFalse(self.path.exists())
+        self.assertTrue(self.path.with_suffix(".corrupt").exists())
+
+        # the next delivery simply starts a current-version file
+        store.add("F123", "Test", tons=10, **CARRIER)
+        saved = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["version"], SCHEMA_VERSION)
+        self.assertEqual(store.total("F123"), 10)
+
+    def test_unsupported_history_version_is_ignored(self) -> None:
+        self.store.add("F123", "Test", tons=100, timestamp="2026-01-01T10:00:00Z", **CARRIER)
+        self.store.reset_target("F123", self.store.targets("F123")[0].id)
+
+        raw = json.loads(self.history_path.read_text(encoding="utf-8"))
+        raw["version"] = 99
+        self.history_path.write_text(json.dumps(raw), encoding="utf-8")
+
+        store = HaulStore(self.path)
+        self.assertEqual(store.history("F123"), [])
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 
 import tkinter as tk
 
-VERSION = "0.7.1"
+VERSION = "0.8.0"
 
 from galtea.core import Tracker
 from galtea.store import HaulStore
@@ -23,6 +23,7 @@ logger = logging.getLogger("GalteaHaulTracker")
 
 _PLUGIN_DIR = Path(__file__).resolve().parent
 _STORE_FILE = _PLUGIN_DIR / "data" / "haul_tracker.json"
+_HISTORY_FILE = _PLUGIN_DIR / "data" / "haul_history.json"
 _CACHE_FILE = _PLUGIN_DIR / "data" / "carrier_cache.json"
 
 _store: Optional[HaulStore] = None
@@ -34,12 +35,13 @@ def _ensure() -> HaulStore:
     """Create the store/tracker once, regardless of hook order."""
     global _store, _tracker
     if _store is None:
-        _store = HaulStore(_STORE_FILE, _CACHE_FILE)
+        _store = HaulStore(_STORE_FILE, _CACHE_FILE, _HISTORY_FILE)
         _tracker = Tracker(_store)
         logger.info(
-            "Galtea Haul Tracker %s using %s (cache %s)",
+            "Galtea Haul Tracker %s using %s (history %s, cache %s)",
             VERSION,
             _STORE_FILE,
+            _HISTORY_FILE,
             _CACHE_FILE,
         )
     return _store
@@ -55,19 +57,22 @@ def _ensure_ui(parent: Optional[tk.Misc] = None) -> PluginUI:
 
 def plugin_start3(plugin_dir: str) -> str:
     """Called by EDMC when the plugin is loaded."""
-    global _PLUGIN_DIR, _STORE_FILE, _CACHE_FILE
+    global _PLUGIN_DIR, _STORE_FILE, _HISTORY_FILE, _CACHE_FILE
     if plugin_dir:
         _PLUGIN_DIR = Path(plugin_dir).resolve()
         _STORE_FILE = _PLUGIN_DIR / "data" / "haul_tracker.json"
+        _HISTORY_FILE = _PLUGIN_DIR / "data" / "haul_history.json"
         _CACHE_FILE = _PLUGIN_DIR / "data" / "carrier_cache.json"
         # Rebuild the store if it was created before we knew the real folder.
         if _store is not None and (
             Path(_store.path) != _STORE_FILE
             or Path(_store.cache_path) != _CACHE_FILE
+            or Path(_store.history_path) != _HISTORY_FILE
         ):
             _store.save()  # keep anything collected under the old path
             _store.path = _STORE_FILE
             _store.cache_path = _CACHE_FILE
+            _store.history_path = _HISTORY_FILE
             _store.load()
     _ensure()
     return "Galtea Haul Tracker"

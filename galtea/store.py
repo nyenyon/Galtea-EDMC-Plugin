@@ -1,10 +1,12 @@
 """Persistent accumulation of hauled tonnage.
 
 One JSON document keeps every commander on this machine separate.  Each
-commander owns a set of targets (carrier or construction site) and a history
-of entries that were deleted or reset, so an accidental delete can be
-inspected and undone.  Carrier display names live in a separate cache file so
-learning a name does not rewrite the haul totals.
+commander owns a set of active targets (carrier or construction site); the
+history of finished entries lives in its own file so an accidental delete in
+one document can never corrupt the other, and carrier display names in a
+third cache file.  Each target also logs every individual delivery (tons and
+timestamp, newest ``DELIVERY_LIMIT`` kept).  In memory everything is merged
+back into the per-commander records; ``save()`` splits it out again.
 """
 
 from __future__ import annotations
@@ -17,22 +19,24 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .journal import is_squadron_callsign
 from .model import (
     KIND_CARRIER,
     KIND_FLEET,
     KIND_SQUADRON,
     Target,
+    clean_carrier_name,
     is_construction_placeholder,
     now_iso,
 )
 
 logger = logging.getLogger("GalteaHaulTracker")
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
+HISTORY_SCHEMA_VERSION = 1
 CACHE_SCHEMA_VERSION = 1
 HISTORY_LIMIT = 200
 CARRIER_LIMIT = 500
+DELIVERY_LIMIT = 100
 
 
 def _as_int(value: Any) -> int:
@@ -45,10 +49,20 @@ def _as_int(value: Any) -> int:
 class HaulStore:
     """Load, mutate and persist the haul totals."""
 
-    def __init__(self, path: Path, cache_path: Optional[Path] = None):
+    def __init__(
+        self,
+        path: Path,
+        cache_path: Optional[Path] = None,
+        history_path: Optional[Path] = None,
+    ):
         self.path = Path(path)
         self.cache_path = (
             Path(cache_path) if cache_path else self.path.with_name("carrier_cache.json")
+        )
+        self.history_path = (
+            Path(history_path)
+            if history_path
+            else self.path.with_name("haul_history.json")
         )
         self.data: Dict[str, Any] = {"version": SCHEMA_VERSION, "cmdrs": {}}
         self.carrier_data: Dict[str, Any] = {
@@ -62,24 +76,83 @@ class HaulStore:
     def load(self) -> None:
         self._load_cache()
         self.data = {"version": SCHEMA_VERSION, "cmdrs": {}}
-        if not self.path.exists():
-            return
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            # Keep the broken file around for inspection but start clean.
-            self._move_corrupt(self.path)
-            return
+        history_raw = self._load_history_file()
+        raw: Any = None
+        if self.path.exists():
+            try:
+                raw = json.loads(self.path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                # Keep the broken file around for inspection but start clean.
+                self._move_corrupt(self.path)
         if isinstance(raw, dict) and isinstance(raw.get("cmdrs"), dict):
-            raw.setdefault("version", SCHEMA_VERSION)
-            self.data = raw
-            changed = self._migrate()
-            if self._correct_squadron_kinds():
+            # shortcut: no data migrations by design — files from other
+            # schema versions are ignored and replaced (the CHANGELOG tells
+            # users to clear data/ on update).  Upgrade path: add a
+            # converter only if a format with real users must survive.
+            try:
+                supported = int(raw.get("version") or 0) == SCHEMA_VERSION
+            except (TypeError, ValueError):
+                supported = False
+            if supported:
+                self.data = raw
+            else:
+                # Move it aside so the first new save cannot destroy it.
+                self._move_corrupt(self.path)
+                logger.warning(
+                    "ignoring %s written by data version %r; clear the data "
+                    "folder when updating the plugin",
+                    self.path,
+                    raw.get("version"),
+                )
+        if self._merge_history(history_raw):
+            self.save()
+
+    def _load_history_file(self) -> Dict[str, Any]:
+        """Read the history file; an unreadable one is moved aside like data."""
+        if not self.history_path.exists():
+            return {"cmdrs": {}}
+        try:
+            raw = json.loads(self.history_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            self._move_corrupt(self.history_path)
+            return {"cmdrs": {}}
+        if not isinstance(raw, dict) or not isinstance(raw.get("cmdrs"), dict):
+            return {"cmdrs": {}}
+        try:
+            supported = int(raw.get("version") or 0) == HISTORY_SCHEMA_VERSION
+        except (TypeError, ValueError):
+            supported = False
+        if not supported:
+            # Move it aside so the next save cannot destroy it.
+            self._move_corrupt(self.history_path)
+            logger.warning(
+                "ignoring %s with unsupported history version %r",
+                self.history_path,
+                raw.get("version"),
+            )
+            return {"cmdrs": {}}
+        return raw
+
+    def _merge_history(self, history_raw: Dict[str, Any]) -> bool:
+        """Merge the separate history file into the commander records.
+
+        Returns whether new records had to be created.
+        """
+        records = self.data.setdefault("cmdrs", {})
+        changed = False
+        for key, entry in (history_raw.get("cmdrs") or {}).items():
+            entries = entry.get("history") if isinstance(entry, dict) else None
+            if not isinstance(entries, list) or not entries:
+                continue
+            record = records.get(key)
+            if not isinstance(record, dict):
+                # History without an active record (e.g. the tracker file was
+                # lost) still deserves to be shown and restored.
+                record = {"name": "", "targets": {}, "history": []}
+                records[key] = record
                 changed = True
-            if self._extract_carriers():
-                changed = True
-            if changed:
-                self.save()
+            record["history"] = copy.deepcopy(entries)
+        return changed
 
     def _load_cache(self) -> None:
         """Load the separate carrier display-name cache."""
@@ -95,13 +168,6 @@ class HaulStore:
             return
         raw.setdefault("version", CACHE_SCHEMA_VERSION)
         self.carrier_data = raw
-        try:
-            version = int(self.carrier_data.get("version") or 1)
-        except (TypeError, ValueError):
-            version = 1
-        if version < CACHE_SCHEMA_VERSION:
-            self.carrier_data["version"] = CACHE_SCHEMA_VERSION
-            self.save_cache()
 
     @staticmethod
     def _move_corrupt(path: Path) -> None:
@@ -117,113 +183,6 @@ class HaulStore:
         except OSError:
             logger.warning("could not move unreadable data file %s", path, exc_info=True)
 
-    def _extract_carriers(self) -> bool:
-        """Move carrier names embedded by older versions into the cache."""
-        changed = False
-        cache_changed = False
-        for cmdr_key, record in (self.data.get("cmdrs") or {}).items():
-            if not isinstance(record, dict) or "carriers" not in record:
-                continue
-            legacy = record.pop("carriers")
-            changed = True
-            if not isinstance(legacy, dict):
-                continue
-
-            carriers = self._carriers(str(cmdr_key), create=True)
-            for entry in legacy.values():
-                if not isinstance(entry, dict):
-                    continue
-                market_id = _as_int(entry.get("market_id"))
-                callsign = str(entry.get("callsign") or "").strip()
-                if not market_id and not callsign:
-                    continue
-                existing = self._find_carrier(carriers, market_id, callsign)
-                if existing is not None:
-                    # The cache is authoritative, but an old entry may be the
-                    # only one that knows the pretty name.
-                    _, existing_entry = existing
-                    if not existing_entry.get("name") and entry.get("name"):
-                        existing_entry["name"] = str(entry.get("name"))
-                        cache_changed = True
-                    continue
-                key = str(market_id) if market_id else callsign.upper()
-                while key in carriers:
-                    key += "_"
-                carriers[key] = dict(entry)
-                cache_changed = True
-
-        if cache_changed:
-            self.save_cache()
-        return changed
-
-    def _migrate(self) -> bool:
-        """Give every target and history snapshot a unique batch id.
-
-        Older files key the targets by market id and have no batch ids.  The
-        same market id can now appear several times (after restoring a reported
-        batch), so targets are keyed by their own id instead.
-        """
-        changed = False
-        for record in (self.data.get("cmdrs") or {}).values():
-            if not isinstance(record, dict):
-                continue
-
-            targets = record.get("targets")
-            if isinstance(targets, dict):
-                for key, target in list(targets.items()):
-                    if not isinstance(target, dict):
-                        continue
-                    batch_id = str(target.get("id") or "")
-                    if not batch_id:
-                        batch_id = uuid.uuid4().hex
-                        target["id"] = batch_id
-                        changed = True
-                    if str(key) != batch_id:
-                        targets.pop(key, None)
-                        targets[batch_id] = target
-                        changed = True
-
-            for entry in record.get("history") or []:
-                if not isinstance(entry, dict):
-                    continue
-                if not entry.get("id"):
-                    entry["id"] = uuid.uuid4().hex
-                    changed = True
-                snapshot = entry.get("target")
-                if isinstance(snapshot, dict) and not snapshot.get("id"):
-                    snapshot["id"] = uuid.uuid4().hex
-                    changed = True
-
-        try:
-            version = int(self.data.get("version") or 1)
-        except (TypeError, ValueError):
-            version = 1
-        if version < SCHEMA_VERSION:
-            self.data["version"] = SCHEMA_VERSION
-            changed = True
-        return changed
-
-    def _correct_squadron_kinds(self) -> bool:
-        """Fix carriers stored as fleet carriers by older plugin versions.
-
-        Journals report squadron carriers as ``FleetCarrier`` and only the
-        four-character callsign (stored as the name) gives them away.
-        """
-        changed = False
-        for record in (self.data.get("cmdrs") or {}).values():
-            record = record or {}
-            for target in (record.get("targets") or {}).values():
-                target = target or {}
-                if target.get("kind") == KIND_FLEET and is_squadron_callsign(target.get("name")):
-                    target["kind"] = KIND_SQUADRON
-                    changed = True
-            for entry in record.get("history") or []:
-                snapshot = (entry or {}).get("target") or {}
-                if snapshot.get("kind") == KIND_FLEET and is_squadron_callsign(snapshot.get("name")):
-                    snapshot["kind"] = KIND_SQUADRON
-                    changed = True
-        return changed
-
     def _write(self, path: Path, data: Dict[str, Any]) -> None:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -235,7 +194,30 @@ class HaulStore:
             logger.warning("could not save %s; tracking continues in memory", path, exc_info=True)
 
     def save(self) -> None:
-        self._write(self.path, self.data)
+        """Persist active hauls and history as two separate files."""
+        self._write(self.path, self._main_doc())
+        self._write(self.history_path, self._history_doc())
+
+    def _main_doc(self) -> Dict[str, Any]:
+        cmdrs: Dict[str, Any] = {}
+        for key, record in (self.data.get("cmdrs") or {}).items():
+            if isinstance(record, dict):
+                cmdrs[key] = {
+                    "name": str(record.get("name") or ""),
+                    "targets": record.get("targets") or {},
+                }
+        doc: Dict[str, Any] = {"version": SCHEMA_VERSION, "cmdrs": cmdrs}
+        last = self.data.get("last_commander")
+        if last:
+            doc["last_commander"] = last
+        return doc
+
+    def _history_doc(self) -> Dict[str, Any]:
+        cmdrs: Dict[str, Any] = {}
+        for key, record in (self.data.get("cmdrs") or {}).items():
+            if isinstance(record, dict) and record.get("history"):
+                cmdrs[key] = {"history": copy.deepcopy(record["history"])}
+        return {"version": HISTORY_SCHEMA_VERSION, "cmdrs": cmdrs}
 
     def save_cache(self) -> None:
         self._write(self.cache_path, self.carrier_data)
@@ -356,7 +338,7 @@ class HaulStore:
             return {}
         entry = found[1]
         return {
-            "name": str(entry.get("name") or ""),
+            "name": clean_carrier_name(entry.get("name")),
             "callsign": str(entry.get("callsign") or ""),
         }
 
@@ -435,6 +417,12 @@ class HaulStore:
         matches.sort(key=lambda target: str(target.get("last_delivery") or ""), reverse=True)
         return matches
 
+    @staticmethod
+    def _trim_deliveries(deliveries: List[Dict[str, Any]]) -> None:
+        if len(deliveries) > DELIVERY_LIMIT:
+            deliveries.sort(key=lambda d: str(d.get("timestamp") or ""))
+            del deliveries[:-DELIVERY_LIMIT]
+
     # -- mutations -------------------------------------------------------
 
     def add(
@@ -449,6 +437,7 @@ class HaulStore:
         station_type: str = "",
         system: str = "",
         display_name: str = "",
+        session: str = "",
     ) -> bool:
         """Add a delivery.  Returns True when the stored totals changed."""
         tons = int(tons or 0)
@@ -480,6 +469,17 @@ class HaulStore:
         target["last_delivery"] = moment
         if not target.get("first_delivery"):
             target["first_delivery"] = moment
+        deliveries = target.setdefault("deliveries", [])
+        last = deliveries[-1] if deliveries else None
+        if session and last is not None and last.get("session") == session:
+            # Same landing: one combined log entry, keeping its start time.
+            last["tons"] = int(last.get("tons") or 0) + tons
+        else:
+            entry = {"tons": tons, "timestamp": moment}
+            if session:
+                entry["session"] = session
+            deliveries.append(entry)
+        self._trim_deliveries(deliveries)
         if display_name:
             target["display_name"] = display_name
         if station_type:
@@ -610,6 +610,9 @@ class HaulStore:
                     existing["first_delivery"] = min(first)
                 if last:
                     existing["last_delivery"] = max(last)
+                merged = (existing.get("deliveries") or []) + (snapshot.get("deliveries") or [])
+                existing["deliveries"] = merged
+                self._trim_deliveries(existing["deliveries"])
             self.save()
             return True
         return False

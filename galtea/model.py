@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 # Delivery targets we care about.
 KIND_FLEET = "fleet_carrier"
@@ -82,6 +82,17 @@ def clean_construction_name(name: str) -> str:
     return stripped or text
 
 
+def clean_carrier_name(name: Any) -> str:
+    """Trim a carrier display name.
+
+    Squadron carrier destination drops arrive as ``Name | CALLSIGN``; the
+    pipe is punctuation of the journal line, not part of the name.  Older
+    plugin versions cached such names verbatim, so this also sanitises
+    cached values on read instead of migrating files.
+    """
+    return str(name or "").strip().strip("|").strip()
+
+
 def format_timestamp(value: str) -> str:
     """Turn a journal timestamp into a short local time string for display."""
     if not value:
@@ -114,6 +125,9 @@ class Target:
     # Unique id of this delivery batch.  The same market can have several
     # active batches after a reported one has been restored.
     id: str = ""
+    # One entry per individual delivery: {"tons": int, "timestamp": str}.
+    # Older files have no log; the first new delivery starts it.
+    deliveries: List[Dict[str, Any]] = field(default_factory=list)
 
     @property
     def label(self) -> str:
@@ -146,6 +160,7 @@ class Target:
             "first_delivery": self.first_delivery,
             "last_delivery": self.last_delivery,
             "id": self.id,
+            "deliveries": [dict(entry) for entry in self.deliveries],
         }
 
     @classmethod
@@ -156,9 +171,14 @@ class Target:
             kind=str(data.get("kind") or KIND_CARRIER),
             station_type=str(data.get("station_type") or ""),
             system=str(data.get("system") or ""),
-            display_name=str(data.get("display_name") or ""),
+            display_name=clean_carrier_name(data.get("display_name")),
             tons=int(data.get("tons") or 0),
             first_delivery=str(data.get("first_delivery") or ""),
             last_delivery=str(data.get("last_delivery") or ""),
             id=str(data.get("id") or ""),
+            deliveries=[
+                entry
+                for entry in (data.get("deliveries") or [])
+                if isinstance(entry, dict)
+            ],
         )

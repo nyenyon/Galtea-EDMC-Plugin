@@ -17,7 +17,13 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from .model import KIND_CARRIER, KIND_CONSTRUCTION, KIND_FLEET, KIND_SQUADRON
+from .model import (
+    KIND_CARRIER,
+    KIND_CONSTRUCTION,
+    KIND_FLEET,
+    KIND_SQUADRON,
+    clean_carrier_name,
+)
 
 logger = logging.getLogger("GalteaHaulTracker")
 
@@ -161,8 +167,9 @@ def carrier_name_from_drop(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
     The journal usually writes the carrier's name followed by its callsign,
     e.g. ``"Type": "Test Carrier T3S-TIE"`` or, for a squadron carrier,
-    ``"Type": "[SCC] The Knave 0822"``.  Some versions omit the callsign or
-    provide the name through ``Type_Localised`` instead.
+    ``"Type": "[SCC] The Knave 0822"`` — sometimes separated by a ``|``.
+    Some versions omit the callsign or provide the name through
+    ``Type_Localised`` instead.
     """
     market_id: Optional[int] = None
     raw_id = entry.get("MarketID")
@@ -182,9 +189,13 @@ def carrier_name_from_drop(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
     match = DROP_NAME_RE.match(text)
     if match:
+        name = clean_carrier_name(match.group("name"))
+        if not name:
+            _log_unparsed_drop(entry)
+            return None
         return {
             "market_id": market_id,
-            "name": match.group("name").strip(),
+            "name": name,
             "callsign": match.group("callsign").strip(),
         }
 
@@ -194,7 +205,11 @@ def carrier_name_from_drop(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
 
     # Some journal versions report only the carrier name, without callsign.
-    return {"market_id": market_id, "name": text, "callsign": ""}
+    name = clean_carrier_name(text)
+    if not name:
+        _log_unparsed_drop(entry)
+        return None
+    return {"market_id": market_id, "name": name, "callsign": ""}
 
 
 def carrier_name_from_stats(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:

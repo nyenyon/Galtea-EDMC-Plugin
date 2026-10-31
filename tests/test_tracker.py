@@ -447,6 +447,20 @@ class TrackerTest(unittest.TestCase):
         self.assertEqual(target.kind, KIND_FLEET)
         self.assertEqual(target.tons, 300)
 
+    def test_sales_of_one_landing_share_a_log_entry(self) -> None:
+        self.feed(FLEET_CARRIER)
+        self.feed(sale(100))
+        self.feed(sale(200, timestamp="2026-01-01T10:03:00Z"))
+        self.feed({"event": "Undocked", "timestamp": "2026-01-01T10:05:00Z"})
+        self.feed(dict(FLEET_CARRIER, timestamp="2026-01-02T09:00:00Z"))
+        self.feed(sale(50, timestamp="2026-01-02T09:01:00Z"))
+
+        deliveries = self.store.targets("F123")[0].deliveries
+        self.assertEqual(
+            [(d["tons"], d["timestamp"]) for d in deliveries],
+            [(300, "2026-01-01T10:01:00Z"), (50, "2026-01-02T09:01:00Z")],
+        )
+
     def test_restart_shows_last_commander_before_any_event(self) -> None:
         self.feed(FLEET_CARRIER)
         self.feed(sale(1320))

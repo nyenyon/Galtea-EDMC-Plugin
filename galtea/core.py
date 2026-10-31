@@ -35,6 +35,9 @@ class Tracker:
         self.store = store
         self.current: Optional[StationContext] = None
         self.stations: Dict[int, StationContext] = {}
+        # Timestamp of the current docking; identifies which logged sales
+        # belong to one landing so the delivery log can merge them.
+        self.dock_session: str = ""
         # Names learned from a drop before we know whether the destination is a
         # carrier.  They are persisted once docking confirms the station kind.
         self.carrier_names: Dict[str, Dict[str, str]] = {}
@@ -56,6 +59,7 @@ class Tracker:
         self.cmdr_name = str(cmdr or "")
         self.store.remember_commander(key, self.cmdr_name)
         self.current = None
+        self.dock_session = ""
         self.stations.clear()
         return True
 
@@ -86,6 +90,7 @@ class Tracker:
                 changed |= self._remember_station(entry, system)
         elif event == "Undocked":
             self.current = None
+            self.dock_session = ""
         elif event in _STATION_HINTS:
             changed |= self._remember_station(entry, system, set_current=False)
         elif event == "SupercruiseDestinationDrop":
@@ -130,6 +135,7 @@ class Tracker:
         self.stations[context.market_id] = context
         if set_current:
             self.current = context
+            self.dock_session = str(entry.get("timestamp") or "")
 
         return self.store.update_target(
             self.cmdr_key,
@@ -293,6 +299,7 @@ class Tracker:
             station_type=context.station_type,
             system=context.system or str(system or ""),
             display_name=context.display_name,
+            session=self.dock_session,
         )
 
     def _on_contribution(
@@ -342,4 +349,5 @@ class Tracker:
             station_type=station_type,
             system=system_name,
             display_name=display_name,
+            session=self.dock_session,
         )

@@ -7,12 +7,16 @@ styling is not applied to plugin widgets.
 
 from __future__ import annotations
 
+import os
 import queue
+import subprocess
+import sys
 import tkinter as tk
 import webbrowser
+from pathlib import Path
 from tkinter import font as tkfont
 from tkinter import ttk
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import myNotebook as nb
 from theme import theme
@@ -26,7 +30,7 @@ from .model import (
     normalize_discord_user,
     now_iso,
 )
-from .store import HaulStore
+from .store import DELIVERY_LIMIT, HaulStore
 from .update import ReleaseInfo, UpdateChecker
 
 PANEL_ROWS = 3
@@ -82,6 +86,24 @@ def _open_url(url: str) -> None:
     try:
         webbrowser.open(url)
     except Exception:  # noqa: BLE001 - opening a browser must never break the UI
+        pass
+
+
+def _open_folder(path: Path) -> None:
+    """Show a folder in the OS file manager; silent when the system refuses.
+
+    There is no cross-platform API for this, so this is the one place with
+    per-OS commands (mirrored in AGENTS.md).
+    """
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        if sys.platform == "win32":
+            os.startfile(str(path))  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(path)])
+        else:
+            subprocess.Popen(["xdg-open", str(path)])
+    except Exception:  # noqa: BLE001 - opening a folder must never break the UI
         pass
 
 
@@ -200,6 +222,8 @@ class PluginUI:
         self.target_wheel: Any = None
         self.history_wheel: Any = None
         self._history_sig: Optional[tuple] = None
+        # Batches whose delivery log is open: ("t", batch id) / ("h", history id)
+        self._expanded: set = set()
 
         self.report_window: Optional[tk.Toplevel] = None
         self.report_copied = False
@@ -564,27 +588,89 @@ class PluginUI:
         self._fit_panel_text(label, full_text, width - 4)
 
     def _haul_row(
-        self, parent: tk.Misc, target: Target, name_limit: int
+        self,
+        parent: tk.Misc,
+        target: Target,
+        name_limit: int,
+        marker: str = "",
+        on_click: Optional[Callable[[], None]] = None,
     ) -> tuple[tk.Frame, tk.Label]:
         """Row with the shared name/kind/tonnage cells; caller adds columns."""
         row = tk.Frame(parent)
         row.pack(fill="x", pady=1)
         row.columnconfigure(0, weight=1)
-        name_label = tk.Label(row, text=_short(target.label, name_limit), anchor="w")
+        name_label = tk.Label(
+            row, text=marker + _short(target.label, name_limit), anchor="w"
+        )
         name_label.grid(row=0, column=0, sticky="ew")
-        tk.Label(row, text=target.kind_label, width=17, anchor="w").grid(
-            row=0, column=1, sticky="w", padx=(8, 0)
+        kind_label = tk.Label(row, text=target.kind_label, width=17, anchor="w")
+        kind_label.grid(row=0, column=1, sticky="w", padx=(8, 0))
+        tons_label = tk.Label(
+            row, text=f"{format_number(target.tons)} t", width=10, anchor="e"
         )
-        tk.Label(row, text=f"{format_number(target.tons)} t", width=10, anchor="e").grid(
-            row=0, column=2, sticky="e", padx=(8, 8)
-        )
+        tons_label.grid(row=0, column=2, sticky="e", padx=(8, 8))
 
-        def fit(_event: Optional[tk.Event] = None, r=row, l=name_label, t=target.label) -> None:
+        def fit(
+            _event: Optional[tk.Event] = None,
+            r=row,
+            l=name_label,
+            t=marker + target.label,
+        ) -> None:
             self._fit_row_label(r, l, t)
 
         row.bind("<Configure>", fit, add="+")
         row.after_idle(fit)
+        if on_click is not None:
+            # Bind, but deliberately do NOT set cursor="hand2": EDMC's theme
+            # treats any non-default cursor as a hyperlink (text turns into
+            # the white selection highlight) and a tk.Frame does not even
+            # have a -foreground option, which silently breaks its theming.
+            # The ▸/▾ marker is the click affordance.
+            for widget in (row, name_label, kind_label, tons_label):
+                widget.bind("<Button-1>", lambda _event, c=on_click: c())
         return row, name_label
+
+    def _toggle_log(self, key: tuple) -> None:
+        """Open or close the per-delivery log of one haul row."""
+        if key in self._expanded:
+            self._expanded.discard(key)
+        else:
+            self._expanded.add(key)
+        # force the guarded history view to rebuild with the new marker
+        self._history_sig = None
+        self.refresh()
+
+    def _log_delivery_rows(self, parent: tk.Misc, deliveries: List[Dict[str, Any]]) -> None:
+        """Small-print rows under an expanded haul, newest delivery first."""
+        entries = sorted(
+            deliveries, key=lambda d: str(d.get("timestamp") or ""), reverse=True
+        )
+        if not entries:
+            tk.Label(
+                parent,
+                text="No logged deliveries for this haul.",
+                font="TkSmallCaptionFont",
+                anchor="w",
+            ).pack(anchor="w", padx=(24, 0))
+            return
+        for entry in entries:
+            try:
+                tons = format_number(int(entry.get("tons") or 0))
+            except (TypeError, ValueError):
+                tons = "?"
+            tk.Label(
+                parent,
+                text=f"{format_timestamp(str(entry.get('timestamp') or ''))}   {tons} t",
+                font="TkSmallCaptionFont",
+                anchor="w",
+            ).pack(anchor="w", padx=(24, 0))
+        if len(entries) >= DELIVERY_LIMIT:
+            tk.Label(
+                parent,
+                text="\u2026 older deliveries are not listed.",
+                font="TkSmallCaptionFont",
+                anchor="w",
+            ).pack(anchor="w", padx=(24, 0))
 
     def _refresh_panel(self) -> None:
         if self.panel_rows is None or self.panel_total is None or self.panel_more is None:
@@ -849,7 +935,16 @@ class PluginUI:
             counts[target.market_id] = counts.get(target.market_id, 0) + 1
 
         for target in targets:
-            row, _name = self._haul_row(self.target_rows, target, 32)
+            key = ("t", target.id)
+            expanded = key in self._expanded
+            marker = "\u25be " if expanded else ("\u25b8 " if target.deliveries else "  ")
+            row, _name = self._haul_row(
+                self.target_rows,
+                target,
+                32,
+                marker=marker,
+                on_click=lambda k=key: self._toggle_log(k),
+            )
             tk.Button(
                 row,
                 text="Report",
@@ -874,6 +969,9 @@ class PluginUI:
                     font="TkSmallCaptionFont",
                 ).grid(row=1, column=0, sticky="w")
 
+            if expanded:
+                self._log_delivery_rows(self.target_rows, target.deliveries)
+
         _bind_wheel(self.target_rows, self.target_wheel)
         _apply_theme(self.target_rows)
 
@@ -896,7 +994,16 @@ class PluginUI:
         for entry in history:
             snapshot = entry.get("target") or {}
             target = Target.from_dict(snapshot)
-            row, _name = self._haul_row(self.history_rows, target, 24)
+            key = ("h", str(entry.get("id") or ""))
+            expanded = key in self._expanded
+            marker = "\u25be " if expanded else ("\u25b8 " if target.deliveries else "  ")
+            row, _name = self._haul_row(
+                self.history_rows,
+                target,
+                24,
+                marker=marker,
+                on_click=lambda k=key: self._toggle_log(k),
+            )
             reported = str(entry.get("reason") or "") == "reported"
             tk.Label(
                 row,
@@ -921,6 +1028,9 @@ class PluginUI:
                     hid, label
                 ),
             ).grid(row=0, column=6, sticky="e", padx=(4, 0))
+
+            if expanded:
+                self._log_delivery_rows(self.history_rows, target.deliveries)
 
         _bind_wheel(self.history_rows, self.history_wheel)
         _apply_theme(self.history_rows)
@@ -1312,13 +1422,21 @@ class PluginUI:
         nb.Label(
             frame, text="This directory stores your commander's game data:"
         ).grid(row=12, column=0, sticky="w")
+        data_row = nb.Frame(frame)
+        data_row.grid(row=13, column=0, sticky="w", pady=(2, 0))
         data_label = nb.Label(
-            frame,
+            data_row,
             text=str(self.store.path.parent),
             justify="left",
             wraplength=420,
         )
-        data_label.grid(row=13, column=0, sticky="w", pady=(2, 0))
+        data_label.grid(row=0, column=0, sticky="w")
+        nb.Button(
+            data_row,
+            text="Open",
+            width=5,
+            command=lambda: _open_folder(self.store.path.parent),
+        ).grid(row=0, column=1, sticky="w", padx=(8, 0))
         data_hint = nb.Label(
             frame,
             text=(
@@ -1397,18 +1515,16 @@ class PluginUI:
         def fit_width(event: tk.Event) -> None:
             """Keep the long labels inside the page when the dialog is resized."""
             width = max(int(event.width) - 4, 200)
-            for label in (
-                enable_hint,
-                hint,
-                data_label,
-                data_hint,
-                update_hint,
-                status_label,
-            ):
+            for label in (enable_hint, hint, data_hint, update_hint, status_label):
                 try:
                     label.configure(wraplength=width)
                 except tk.TclError:
                     pass
+            try:
+                # shares its line with the Open button
+                data_label.configure(wraplength=max(width - 60, 120))
+            except tk.TclError:
+                pass
             try:
                 link.configure(
                     wraplength=max(width - version_label.winfo_reqwidth() - 12, 80)

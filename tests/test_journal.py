@@ -17,6 +17,18 @@ class CarrierDropTest(unittest.TestCase):
         self.assertEqual(info["name"], "Test Carrier")
         self.assertEqual(info["callsign"], "T3S-TIE")
 
+    def test_pipe_before_the_callsign_is_not_part_of_the_name(self) -> None:
+        info = carrier_name_from_drop({"MarketID": 1, "Type": "ILMARINEN | SETA"})
+
+        self.assertEqual(info["name"], "ILMARINEN")
+        self.assertEqual(info["callsign"], "SETA")
+
+    def test_trailing_pipe_without_callsign_is_stripped(self) -> None:
+        info = carrier_name_from_drop({"MarketID": 1, "Type": "Test Carrier |"})
+
+        self.assertEqual(info["name"], "Test Carrier")
+        self.assertEqual(info["callsign"], "")
+
     def test_name_without_callsign_is_kept(self) -> None:
         info = carrier_name_from_drop({"MarketID": 1, "Type": "Test Carrier"})
 

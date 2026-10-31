@@ -84,6 +84,18 @@ class ReportCommandTest(unittest.TestCase):
         self.assertEqual(normalize_discord_user("@exampleuser"), "@exampleuser")
         self.assertEqual(normalize_discord_user("   "), "")
 
+    def test_cached_pipe_display_name_self_heals_on_read(self) -> None:
+        # Old plugin versions cached the "|" of "ILMARINEN | SETA" verbatim.
+        target = Target.from_dict(
+            {
+                "market_id": 3709409999,
+                "name": "SETA",
+                "kind": KIND_SQUADRON,
+                "display_name": "ILMARINEN |",
+            }
+        )
+        self.assertEqual(target.label, "ILMARINEN (SETA)")
+
 
 if __name__ == "__main__":
     unittest.main()

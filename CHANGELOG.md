@@ -5,6 +5,36 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
+## [0.8.0] - 2026-10-31
+
+### Added
+
+- The **Game data** path in the settings has an **Open** button that reveals
+  the directory in the system file manager.
+- Finished hauls now live in their own file `data/haul_history.json` while
+  active hauls stay in `haul_tracker.json` (schema 4).
+  Restoring, deleting and clearing history work exactly as before; a corrupt
+  or lost tracker file no longer takes the history with it.
+- Per-batch delivery log (schema 5): every landing is recorded as one entry
+  with its combined tonnage and the timestamp of its first sale (a `Docked`
+  event marks the landing; sales without that context log individually).
+  Clicking a haul row in the details window — active or finished — expands
+  the log, newest first.
+
+### Fixed
+
+- Carrier names from supercruise destination drops no longer keep the `|`
+  the journal writes before the callsign: `ILMARINEN | SETA` now displays
+  as `ILMARINEN (SETA)`, and pipe names cached by older plugin versions
+  are cleaned on read (no migration needed).
+
+### Removed
+
+- All data file migrations are gone. Files written by older plugin versions
+  are moved to `<name>.corrupt` and skipped with a warning in the EDMC log;
+  the plugin starts fresh. **Clear the `data/` folder before updating** —
+  haul totals and history are not converted.
+
 ## [0.7.1] - 2026-10-29
 
 ### Changed
