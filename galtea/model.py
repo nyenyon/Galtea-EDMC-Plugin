@@ -72,12 +72,23 @@ _CONSTRUCTION_PREFIX = re.compile(
     re.IGNORECASE,
 )
 
+# The colonisation ship is the only site whose StationName is a localisation
+# token, e.g. "$EXT_PANEL_ColonisationShip; Volk Reach" or
+# "$EXT_PANEL_ColonisationShip:#index=2; <name>" (same forms EDMC matches).
+_COLONISATION_TOKEN_PREFIX = re.compile(
+    r"^\s*\$EXT_PANEL_ColonisationShip(?::#index=\d+)?;\s*", re.IGNORECASE
+)
+
 
 def clean_construction_name(name: str) -> str:
-    """Strip the generic construction-site prefix from a station name."""
+    """Strip the journal's construction-site prefix or colonisation token."""
     text = str(name or "").strip()
     if not text:
         return text
+    if _COLONISATION_TOKEN_PREFIX.match(text):
+        # What follows the token is the settlement's primary-port name.
+        stripped = _COLONISATION_TOKEN_PREFIX.sub("", text, count=1).strip()
+        return stripped or "System Colonisation Ship"
     stripped = _CONSTRUCTION_PREFIX.sub("", text, count=1).strip()
     return stripped or text
 

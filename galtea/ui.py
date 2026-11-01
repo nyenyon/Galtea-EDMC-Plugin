@@ -640,10 +640,14 @@ class PluginUI:
         self._history_sig = None
         self.refresh()
 
-    def _log_delivery_rows(self, parent: tk.Misc, deliveries: List[Dict[str, Any]]) -> None:
+    def _log_delivery_rows(
+        self, parent: tk.Misc, target: Target, editable: bool = True
+    ) -> None:
         """Small-print rows under an expanded haul, newest delivery first."""
         entries = sorted(
-            deliveries, key=lambda d: str(d.get("timestamp") or ""), reverse=True
+            target.deliveries,
+            key=lambda d: str(d.get("timestamp") or ""),
+            reverse=True,
         )
         if not entries:
             tk.Label(
@@ -654,16 +658,40 @@ class PluginUI:
             ).pack(anchor="w", padx=(24, 0))
             return
         for entry in entries:
+            row = tk.Frame(parent)
+            row.pack(anchor="w", padx=(24, 0))
+            timestamp = str(entry.get("timestamp") or "")
             try:
-                tons = format_number(int(entry.get("tons") or 0))
+                current = int(entry.get("tons") or 0)
             except (TypeError, ValueError):
-                tons = "?"
+                current = 0
+            # Fixed cell widths keep date, tonnage and button aligned
+            # across the separate row frames.
             tk.Label(
-                parent,
-                text=f"{format_timestamp(str(entry.get('timestamp') or ''))}   {tons} t",
+                row,
+                text=format_timestamp(timestamp),
                 font="TkSmallCaptionFont",
+                width=16,
                 anchor="w",
-            ).pack(anchor="w", padx=(24, 0))
+            ).grid(row=0, column=0)
+            tons_label = tk.Label(
+                row,
+                text=f"{format_number(current)} t",
+                font="TkSmallCaptionFont",
+                width=10,
+                anchor="e",
+            )
+            tons_label.grid(row=0, column=1, padx=(8, 8))
+            if editable and timestamp:
+                # Without a timestamp the entry cannot be identified safely.
+                # Compact inner padding; focus ring stays for accessibility.
+                button = tk.Button(row, text="\u270e", width=2, bd=1, pady=0)
+                button.configure(
+                    command=lambda r=row, l=tons_label, b=button, t=target, ts=timestamp, c=current: self._edit_delivery_tons(
+                        r, (l, b), t.id, ts, c
+                    )
+                )
+                button.grid(row=0, column=2)
         if len(entries) >= DELIVERY_LIMIT:
             tk.Label(
                 parent,
@@ -671,6 +699,45 @@ class PluginUI:
                 font="TkSmallCaptionFont",
                 anchor="w",
             ).pack(anchor="w", padx=(24, 0))
+
+    def _edit_delivery_tons(
+        self,
+        row: tk.Frame,
+        hidden: tuple,
+        batch_id: str,
+        timestamp: str,
+        current: int,
+    ) -> None:
+        """Turn one log line into a numbers-only field until saved/cancelled."""
+        for widget in hidden:
+            widget.grid_forget()
+        var = tk.StringVar(master=row, value=str(current))
+        entry = tk.Entry(
+            row,
+            textvariable=var,
+            width=8,
+            justify="right",
+            validate="key",
+            validatecommand=(
+                row.register(lambda new: new == "" or new.isdigit()),
+                "%P",
+            ),
+        )
+
+        def save(_event: Optional[tk.Event] = None) -> None:
+            if var.get().isdigit():
+                self.store.edit_delivery(
+                    self.cmdr_key, batch_id, timestamp, int(var.get())
+                )
+            self.refresh()
+
+        entry.bind("<Return>", save)
+        entry.bind("<KP_Enter>", save)
+        entry.bind("<Escape>", lambda _event: self.refresh())
+        entry.grid(row=0, column=1, padx=(8, 8), sticky="e")
+        entry.focus_set()
+        entry.select_range(0, "end")
+        _apply_theme(row)
 
     def _refresh_panel(self) -> None:
         if self.panel_rows is None or self.panel_total is None or self.panel_more is None:
@@ -970,7 +1037,7 @@ class PluginUI:
                 ).grid(row=1, column=0, sticky="w")
 
             if expanded:
-                self._log_delivery_rows(self.target_rows, target.deliveries)
+                self._log_delivery_rows(self.target_rows, target)
 
         _bind_wheel(self.target_rows, self.target_wheel)
         _apply_theme(self.target_rows)
@@ -1030,7 +1097,8 @@ class PluginUI:
             ).grid(row=0, column=6, sticky="e", padx=(4, 0))
 
             if expanded:
-                self._log_delivery_rows(self.history_rows, target.deliveries)
+                # Finished hauls may already be reported: log stays read-only.
+                self._log_delivery_rows(self.history_rows, target, editable=False)
 
         _bind_wheel(self.history_rows, self.history_wheel)
         _apply_theme(self.history_rows)

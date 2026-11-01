@@ -212,6 +212,39 @@ class StoreTest(unittest.TestCase):
         )
         self.assertEqual(self.store.total("F123"), 350)
 
+    def test_delivery_edit_adjusts_active_batch(self) -> None:
+        self.store.add("F123", "Test", tons=100, timestamp="2026-01-01T10:01:00Z", session="s1", **CARRIER)
+        self.store.add("F123", "Test", tons=200, timestamp="2026-01-01T11:01:00Z", session="s2", **CARRIER)
+        batch_id = self.store.targets("F123")[0].id
+
+        self.assertTrue(
+            self.store.edit_delivery("F123", batch_id, "2026-01-01T10:01:00Z", 150)
+        )
+        target = self.store.targets("F123")[0]
+        self.assertEqual([d["tons"] for d in target.deliveries], [150, 200])
+        self.assertEqual(target.tons, 350)
+
+        # unchanged values and unknown entries change nothing
+        self.assertFalse(
+            self.store.edit_delivery("F123", batch_id, "2026-01-01T10:01:00Z", 150)
+        )
+        self.assertFalse(
+            self.store.edit_delivery("F123", batch_id, "nope", 1)
+        )
+        self.assertFalse(self.store.edit_delivery("F123", "ghost", "2026-01-01T10:01:00Z", 1))
+
+    def test_delivery_edit_rejects_archived_hauls(self) -> None:
+        self.store.add("F123", "Test", tons=500, timestamp="2026-01-01T10:01:00Z", **CARRIER)
+        batch_id = self.store.targets("F123")[0].id
+        self.store.reset_target("F123", batch_id)
+
+        self.assertFalse(
+            self.store.edit_delivery("F123", batch_id, "2026-01-01T10:01:00Z", 400)
+        )
+        snapshot = self.store.history("F123")[0]["target"]
+        self.assertEqual(snapshot["tons"], 500)
+        self.assertEqual(snapshot["deliveries"][0]["tons"], 500)
+
     def test_restore_keeps_delivery_log(self) -> None:
         self.store.add("F123", "Test", tons=100, timestamp="2026-01-01T10:00:00Z", **CARRIER)
         self.store.add("F123", "Test", tons=40, timestamp="2026-01-01T10:05:00Z", **CARRIER)

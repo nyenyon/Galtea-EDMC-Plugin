@@ -10,6 +10,7 @@ from galtea.model import (
     KIND_FLEET,
     KIND_SQUADRON,
     Target,
+    clean_construction_name,
     normalize_discord_user,
 )
 
@@ -83,6 +84,28 @@ class ReportCommandTest(unittest.TestCase):
         self.assertEqual(normalize_discord_user("exampleuser"), "@exampleuser")
         self.assertEqual(normalize_discord_user("@exampleuser"), "@exampleuser")
         self.assertEqual(normalize_discord_user("   "), "")
+
+    def test_clean_construction_name_variants(self) -> None:
+        # Plain depot names keep working.
+        self.assertEqual(
+            clean_construction_name("Orbital Construction Site: Marshburn Hub"),
+            "Marshburn Hub",
+        )
+        # The colonisation ship token resolves to its primary-port name.
+        self.assertEqual(
+            clean_construction_name("$EXT_PANEL_ColonisationShip; Volk Reach"),
+            "Volk Reach",
+        )
+        self.assertEqual(
+            clean_construction_name(
+                "$EXT_PANEL_ColonisationShip:#index=2; Okawara Horizons"
+            ),
+            "Okawara Horizons",
+        )
+        self.assertEqual(
+            clean_construction_name("$EXT_PANEL_ColonisationShip;"),
+            "System Colonisation Ship",
+        )
 
     def test_cached_pipe_display_name_self_heals_on_read(self) -> None:
         # Old plugin versions cached the "|" of "ILMARINEN | SETA" verbatim.

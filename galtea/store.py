@@ -490,6 +490,32 @@ class HaulStore:
         self.save()
         return True
 
+    def edit_delivery(
+        self, cmdr_key: str, batch_id: str, timestamp: str, tons: int
+    ) -> bool:
+        """Correct one logged delivery and adjust the batch total.
+
+        The entry is found by its timestamp (unique per landing because
+        same-session sales are merged).  Only active batches are editable;
+        archived history may already have been reported and stays immutable.
+        """
+        tons = int(tons)
+        if tons < 0 or not timestamp:
+            return False
+        target = self._cmdr(cmdr_key)["targets"].get(str(batch_id))
+        if not isinstance(target, dict):
+            return False
+        for delivery in target.get("deliveries") or []:
+            if str(delivery.get("timestamp") or "") == timestamp:
+                delta = tons - int(delivery.get("tons") or 0)
+                if delta == 0:
+                    return False
+                delivery["tons"] = tons
+                target["tons"] = max(0, int(target.get("tons") or 0) + delta)
+                self.save()
+                return True
+        return False
+
     def update_target(
         self,
         cmdr_key: str,
