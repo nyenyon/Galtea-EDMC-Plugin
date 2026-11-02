@@ -182,15 +182,16 @@ class StoreTest(unittest.TestCase):
                     "F123",
                     "Test",
                     tons=1,
-                    timestamp=f"2026-01-01T11:{minute:02d}:00Z",
+                    timestamp=f"2026-01-01T11:{minute * 3:02d}:00Z",
+                    session=f"s{minute}",
                     **CARRIER,
                 )
 
         deliveries = self.store.targets("F123")[0].deliveries
         stamps = [d["timestamp"] for d in deliveries]
         self.assertEqual(len(stamps), 5)
-        self.assertEqual(stamps[0], "2026-01-01T11:03:00Z")
-        self.assertEqual(stamps[-1], "2026-01-01T11:07:00Z")
+        self.assertEqual(stamps[0], "2026-01-01T11:09:00Z")
+        self.assertEqual(stamps[-1], "2026-01-01T11:21:00Z")
         # the summed total keeps counting every delivery
         self.assertEqual(self.store.total("F123"), 8)
 
@@ -212,6 +213,21 @@ class StoreTest(unittest.TestCase):
         )
         self.assertEqual(self.store.total("F123"), 350)
 
+    def test_landing_merges_without_dock_event(self) -> None:
+        # EDMC joined a running game: no session for these sales. The window
+        # fallback still combines one landing, even across more than 2
+        # minutes of selling, but keeps a later round trip separate.
+        self.store.add("F123", "Test", tons=998, timestamp="2026-01-01T10:00:00Z", **CARRIER)
+        self.store.add("F123", "Test", tons=164, timestamp="2026-01-01T10:01:30Z", **CARRIER)
+        self.store.add("F123", "Test", tons=28, timestamp="2026-01-01T10:02:30Z", **CARRIER)
+        self.store.add("F123", "Test", tons=1320, timestamp="2026-01-01T10:12:00Z", **CARRIER)
+
+        deliveries = self.store.targets("F123")[0].deliveries
+        self.assertEqual(
+            [(d["tons"], d["timestamp"]) for d in deliveries],
+            [(1190, "2026-01-01T10:00:00Z"), (1320, "2026-01-01T10:12:00Z")],
+        )
+
     def test_delivery_edit_adjusts_active_batch(self) -> None:
         self.store.add("F123", "Test", tons=100, timestamp="2026-01-01T10:01:00Z", session="s1", **CARRIER)
         self.store.add("F123", "Test", tons=200, timestamp="2026-01-01T11:01:00Z", session="s2", **CARRIER)
@@ -232,6 +248,28 @@ class StoreTest(unittest.TestCase):
             self.store.edit_delivery("F123", batch_id, "nope", 1)
         )
         self.assertFalse(self.store.edit_delivery("F123", "ghost", "2026-01-01T10:01:00Z", 1))
+
+    def test_delivery_delete_reduces_total(self) -> None:
+        self.store.add("F123", "Test", tons=100, timestamp="2026-01-01T10:01:00Z", **CARRIER)
+        self.store.add("F123", "Test", tons=200, timestamp="2026-01-01T11:01:00Z", **CARRIER)
+        batch_id = self.store.targets("F123")[0].id
+
+        self.assertTrue(
+            self.store.delete_delivery("F123", batch_id, "2026-01-01T10:01:00Z")
+        )
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.tons, 200)
+        self.assertEqual([d["tons"] for d in target.deliveries], [200])
+
+        # unknown timestamps and archived hauls change nothing
+        self.assertFalse(
+            self.store.delete_delivery("F123", batch_id, "2026-01-01T10:01:00Z")
+        )
+        self.store.reset_target("F123", batch_id)
+        self.assertFalse(
+            self.store.delete_delivery("F123", batch_id, "2026-01-01T11:01:00Z")
+        )
+        self.assertEqual(self.store.history("F123")[0]["target"]["tons"], 200)
 
     def test_delivery_edit_rejects_archived_hauls(self) -> None:
         self.store.add("F123", "Test", tons=500, timestamp="2026-01-01T10:01:00Z", **CARRIER)

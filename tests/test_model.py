@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import unittest
 
+from datetime import datetime, timedelta, timezone
+
 from galtea.model import (
     DEFAULT_DISCORD_USER,
     KIND_CONSTRUCTION,
@@ -11,8 +13,23 @@ from galtea.model import (
     KIND_SQUADRON,
     Target,
     clean_construction_name,
+    format_duration,
     normalize_discord_user,
+    round_trip_summary,
+    round_trip_text,
 )
+
+
+def deliveries_from_gaps(gaps_s, tons=1320):
+    """Delivery log whose consecutive timestamps differ by the given gaps."""
+    base = datetime(2026, 11, 1, 12, 0, tzinfo=timezone.utc)
+    moments = [base]
+    for gap in gaps_s:
+        moments.append(moments[-1] + timedelta(seconds=gap))
+    return [
+        {"tons": tons, "timestamp": moment.strftime("%Y-%m-%dT%H:%M:%SZ")}
+        for moment in moments
+    ]
 
 
 class ReportCommandTest(unittest.TestCase):
@@ -118,6 +135,49 @@ class ReportCommandTest(unittest.TestCase):
             }
         )
         self.assertEqual(target.label, "ILMARINEN (SETA)")
+
+
+class RoundTripTest(unittest.TestCase):
+    # The 16 gaps from nyenyon's real Volk Reach session (seconds).
+    REAL_GAPS = [
+        593, 451, 325, 333, 319, 348, 352, 543, 337, 366, 346, 318, 315,
+        321, 329, 318,
+    ]
+
+    def test_real_session_has_no_pauses(self) -> None:
+        summary = round_trip_summary(deliveries_from_gaps(self.REAL_GAPS))
+        # median 335 -> cutoff max(1005, 1800) = 1800 -> nothing dropped
+        self.assertEqual(summary, (370, 16, 16))
+        self.assertEqual(
+            round_trip_text(deliveries_from_gaps(self.REAL_GAPS)),
+            "Avg round trip: 6 min 10 s (16 trips)",
+        )
+
+    def test_long_pause_is_ignored(self) -> None:
+        deliveries = deliveries_from_gaps([360, 360, 360, 360, 7200])
+        self.assertEqual(round_trip_summary(deliveries), (360, 4, 5))
+        self.assertEqual(
+            round_trip_text(deliveries),
+            "Avg round trip: 6 min 0 s (4 of 5 trips, 1 pause ignored)",
+        )
+
+    def test_long_legitimate_flights_are_not_pauses(self) -> None:
+        # median 3700 s -> cutoff 11100 s, so the 4000 s run stays counted
+        deliveries = deliveries_from_gaps([3700, 4000, 3700, 90000])
+        summary = round_trip_summary(deliveries)
+        self.assertEqual(summary[1:], (3, 4))
+        self.assertEqual(summary[0], round((3700 + 4000 + 3700) / 3))
+
+    def test_needs_at_least_two_gaps(self) -> None:
+        self.assertIsNone(round_trip_summary(deliveries_from_gaps([300])))
+        self.assertEqual(round_trip_text(deliveries_from_gaps([300])), "")
+        self.assertEqual(round_trip_text([]), "")
+
+    def test_format_duration(self) -> None:
+        self.assertEqual(format_duration(59), "59 s")
+        self.assertEqual(format_duration(370), "6 min 10 s")
+        self.assertEqual(format_duration(3725), "1 h 2 min")
+        self.assertEqual(format_duration(-5), "0 s")
 
 
 if __name__ == "__main__":

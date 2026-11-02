@@ -5,7 +5,7 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
-## [Unreleased]
+## [0.9.0] - 2026-11-02
 
 ### Added
 
@@ -14,6 +14,14 @@ Versions match `VERSION` in `load.py`.
   return) stores the change and adjusts the haul's total by the difference;
   Escape cancels. Only active hauls — finished hauls may already have been
   reported, so their log stays read-only.
+- Delete button (✕) beside each delivery log line: it asks for confirmation,
+  then removes the entry and reduces the haul total by its tonnage.
+- Average round trip: the bottom of the expanded delivery log shows the mean
+  time between consecutive landings. Pauses are filtered out automatically
+  (any gap over 3x the median, at least 30 minutes, doesn't count) and the
+  line reports how many trips were used. A small **?** inside a circle
+  explains the measurement on hover. Computed on the fly, nothing new is
+  stored.
 
 ### Fixed
 
@@ -21,6 +29,12 @@ Versions match `VERSION` in `load.py`.
   instead of the raw `$EXT_PANEL_ColonisationShip;` journal token. Orbital
   and planetary sites were unaffected: the journal already writes their
   plain "… Construction Site: <name>" and the prefix has long been stripped.
+- The main-window panel no longer flickers and stretches the EDMC window
+  back and forth when entries appear or during bulk selling: rebuilt rows
+  start from the last fitted name width and unchanged rows skip the rebuild.
+- A landing whose `Docked` event was missed (e.g. EDMC joined a running
+  game) no longer splits into one log line per sale: sales with an unknown
+  session that follow each other within two minutes merge into one landing.
 
 ## [0.8.0] - 2026-10-31
 

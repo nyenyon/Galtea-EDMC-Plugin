@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # Delivery targets we care about.
 KIND_FLEET = "fleet_carrier"
@@ -102,6 +102,78 @@ def clean_carrier_name(name: Any) -> str:
     cached values on read instead of migrating files.
     """
     return str(name or "").strip().strip("|").strip()
+
+
+# Gaps between two landings longer than 3x their median (but at least this
+# many seconds) count as player pauses, not as round trips.  The floor
+# matters because some delivery runs are simply long.
+ROUNDTRIP_PAUSE_FLOOR_S = 30 * 60
+
+
+def round_trip_summary(
+    deliveries: List[Dict[str, Any]],
+) -> Optional[Tuple[int, int, int]]:
+    """Average round-trip seconds and the trips used/seen, or ``None``.
+
+    One round trip is the gap between two consecutive delivery timestamps.
+    Gaps above ``max(3 * median, ROUNDTRIP_PAUSE_FLOOR_S)`` are treated as
+    pauses (the player stepped away) and dropped from the average.
+    """
+    moments = []
+    for entry in deliveries or []:
+        stamp = str(entry.get("timestamp") or "")
+        if not stamp:
+            continue
+        text = stamp[:-1] + "+00:00" if stamp.endswith("Z") else stamp
+        try:
+            moments.append(datetime.fromisoformat(text))
+        except ValueError:
+            continue
+    try:
+        moments.sort()
+        gaps = sorted(
+            (later - earlier).total_seconds()
+            for earlier, later in zip(moments, moments[1:])
+        )
+    except TypeError:  # mixed naive/aware timestamps
+        return None
+    if len(gaps) < 2:
+        return None
+    middle = len(gaps) // 2
+    median = gaps[middle] if len(gaps) % 2 else (gaps[middle - 1] + gaps[middle]) / 2
+    cutoff = max(3 * median, ROUNDTRIP_PAUSE_FLOOR_S)
+    used = [gap for gap in gaps if gap <= cutoff]
+    if not used:
+        return None
+    return int(round(sum(used) / len(used))), len(used), len(gaps)
+
+
+def format_duration(seconds: int) -> str:
+    """Human duration: ``6 min 10 s`` or ``1 h 2 min``."""
+    seconds = max(0, int(seconds))
+    hours, rest = divmod(seconds, 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours} h {minutes} min"
+    if minutes:
+        return f"{minutes} min {secs} s"
+    return f"{secs} s"
+
+
+def round_trip_text(deliveries: List[Dict[str, Any]]) -> str:
+    """One-line average round trip for the delivery log, or ``""``."""
+    summary = round_trip_summary(deliveries)
+    if summary is None:
+        return ""
+    avg, used, total = summary
+    text = f"Avg round trip: {format_duration(avg)}"
+    if used < total:
+        skipped = total - used
+        word = "pause" if skipped == 1 else "pauses"
+        text += f" ({used} of {total} trips, {skipped} {word} ignored)"
+    else:
+        text += f" ({total} trips)"
+    return text
 
 
 def format_timestamp(value: str) -> str:

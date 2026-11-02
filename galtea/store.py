@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -37,6 +38,10 @@ CACHE_SCHEMA_VERSION = 1
 HISTORY_LIMIT = 200
 CARRIER_LIMIT = 500
 DELIVERY_LIMIT = 100
+# Without a Docked event the plugin cannot know where one landing ends; two
+# real round trips are always further apart than this, so consecutive sales
+# within this window at the same target count as one landing.
+DELIVERY_MERGE_WINDOW_S = 120
 
 
 def _as_int(value: Any) -> int:
@@ -44,6 +49,16 @@ def _as_int(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _parse_ts(value: Any) -> Optional[float]:
+    text = str(value or "")
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(text).timestamp()
+    except ValueError:
+        return None
 
 
 class HaulStore:
@@ -471,14 +486,28 @@ class HaulStore:
             target["first_delivery"] = moment
         deliveries = target.setdefault("deliveries", [])
         last = deliveries[-1] if deliveries else None
-        if session and last is not None and last.get("session") == session:
-            # Same landing: one combined log entry, keeping its start time.
+        merge = False
+        if last is not None:
+            if session and last.get("session") == session:
+                merge = True
+            elif not session or not last.get("session"):
+                # At least one side lacks a Docked session: fall back to the
+                # time window since the landing's most recent sale.
+                anchor = last.get("last_sale") or last.get("timestamp")
+                gap_seconds = (
+                    None
+                    if _parse_ts(anchor) is None or _parse_ts(moment) is None
+                    else _parse_ts(moment) - _parse_ts(anchor)
+                )
+                merge = gap_seconds is not None and 0 <= gap_seconds <= DELIVERY_MERGE_WINDOW_S
+        if merge:
+            # One landing: one combined log entry, keeping its start time.
             last["tons"] = int(last.get("tons") or 0) + tons
+            last["last_sale"] = moment
         else:
-            entry = {"tons": tons, "timestamp": moment}
-            if session:
-                entry["session"] = session
-            deliveries.append(entry)
+            deliveries.append(
+                {"tons": tons, "timestamp": moment, "last_sale": moment, **({"session": session} if session else {})}
+            )
         self._trim_deliveries(deliveries)
         if display_name:
             target["display_name"] = display_name
@@ -512,6 +541,29 @@ class HaulStore:
                     return False
                 delivery["tons"] = tons
                 target["tons"] = max(0, int(target.get("tons") or 0) + delta)
+                self.save()
+                return True
+        return False
+
+    def delete_delivery(self, cmdr_key: str, batch_id: str, timestamp: str) -> bool:
+        """Remove one logged delivery and reduce the batch total.
+
+        The entry is found by its timestamp like in ``edit_delivery``;
+        only active batches are mutable, archived history stays intact.
+        """
+        if not timestamp:
+            return False
+        target = self._cmdr(cmdr_key)["targets"].get(str(batch_id))
+        if not isinstance(target, dict):
+            return False
+        deliveries = target.get("deliveries") or []
+        for index, delivery in enumerate(deliveries):
+            if str(delivery.get("timestamp") or "") == timestamp:
+                removed = deliveries.pop(index)
+                target["tons"] = max(
+                    0,
+                    int(target.get("tons") or 0) - int(removed.get("tons") or 0),
+                )
                 self.save()
                 return True
         return False

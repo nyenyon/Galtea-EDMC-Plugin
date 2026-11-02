@@ -29,6 +29,7 @@ from .model import (
     format_timestamp,
     normalize_discord_user,
     now_iso,
+    round_trip_text,
 )
 from .store import DELIVERY_LIMIT, HaulStore
 from .update import ReleaseInfo, UpdateChecker
@@ -192,6 +193,104 @@ def _clear(frame: tk.Misc) -> None:
         child.destroy()
 
 
+def _help_icon(parent: tk.Misc) -> tk.Canvas:
+    """A "?" inside a circle, used beside values that have hover help.
+
+    EDMC's theme colours canvas backgrounds but not canvas *items*, so the
+    circle and question mark are painted in the current theme foreground
+    and re-painted on hover to survive mid-session theme changes.
+    """
+    icon = tk.Canvas(
+        parent, width=14, height=14, borderwidth=0, highlightthickness=0
+    )
+
+    def paint(_event: object = None) -> None:
+        try:
+            current = getattr(theme, "current", None) or {}
+            color = str(current.get("foreground") or "black")
+            icon.delete("help")
+            icon.create_oval(1, 1, 13, 13, outline=color, tags="help")
+            icon.create_text(
+                7, 7, text="?", fill=color, font="TkSmallCaptionFont", tags="help"
+            )
+        except tk.TclError:
+            pass
+
+    paint()
+    icon.bind("<Enter>", paint, add="+")
+    return icon
+
+
+class _Tooltip:
+    """Small delayed hover popup; Tk has no built-in tooltip.
+
+    Attach to any widget with ``_Tooltip(widget, "text")``.  Deliberately
+    no hand2 cursor: EDMC's theme renders cursor widgets as hyperlinks.
+    """
+
+    def __init__(self, widget: tk.Widget, text: str, delay_ms: int = 400):
+        self.widget = widget
+        self.text = text
+        self.delay = delay_ms
+        self.window: Optional[tk.Toplevel] = None
+        self.after_id: Optional[str] = None
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<ButtonPress>", self._hide, add="+")
+        widget.bind("<Destroy>", self._on_destroy, add="+")
+
+    def _schedule(self, _event: object = None) -> None:
+        self._hide()
+        try:
+            self.after_id = self.widget.after(self.delay, self._show)
+        except tk.TclError:
+            self.after_id = None
+
+    def _show(self) -> None:
+        self.after_id = None
+        try:
+            if self.window is not None or not self.widget.winfo_ismapped():
+                return
+            x = self.widget.winfo_rootx() + self.widget.winfo_width() + 6
+            y = self.widget.winfo_rooty()
+            window = tk.Toplevel(self.widget)
+            window.overrideredirect(True)
+            window.geometry(f"+{x}+{y}")
+            tk.Label(
+                window,
+                text=self.text,
+                justify="left",
+                font="TkSmallCaptionFont",
+                padx=6,
+                pady=4,
+                borderwidth=1,
+                relief="solid",
+            ).pack()
+            _apply_theme(window)
+            self.window = window
+        except tk.TclError:
+            self.window = None
+
+    def _hide(self, _event: object = None) -> None:
+        if self.after_id is not None:
+            try:
+                self.widget.after_cancel(self.after_id)
+            except tk.TclError:
+                pass
+            self.after_id = None
+        if self.window is not None:
+            try:
+                self.window.destroy()
+            except tk.TclError:
+                pass
+            self.window = None
+
+    def _on_destroy(self, _event: object = None) -> None:
+        # The bound widget vanished (e.g. list rebuild) while the popup or
+        # its pending timer was still alive.
+        self._hide()
+
+
 class PluginUI:
     """Owns every widget the plugin adds to EDMC."""
 
@@ -234,6 +333,12 @@ class PluginUI:
         self.update_status: Optional[Any] = None
         self.link_font: Optional[tkfont.Font] = None
         self._panel_fonts: Dict[str, tkfont.Font] = {}
+        self._panel_sig: Optional[tuple] = None
+        # Last fitted text per full name.  Rebuilding starts from this text
+        # instead of the short fallback, so the panel's requested width stays
+        # stable and EDMC's window does not bounce short -> fit -> wide ->
+        # rebuild -> short on every journal event.
+        self._panel_fit: Dict[str, str] = {}
 
         self.details_update: Optional[tk.Frame] = None
         self.details_update_label: Optional[tk.Label] = None
@@ -473,6 +578,7 @@ class PluginUI:
         frame = self.panel
         _clear(frame)
         frame.columnconfigure(0, weight=1)
+        self._panel_sig = None  # force the next refresh to fill the rows
 
         if not plugin_enabled():
             # Everything stays wired up but idle: no rows, no details window
@@ -535,10 +641,12 @@ class PluginUI:
             self._panel_fonts[spec] = font
         return font
 
-    def _fit_panel_text(self, label: tk.Label, full_text: str, available: int) -> None:
-        """Show as much of a label as fits, with an ellipsis when needed."""
+    def _fit_panel_text(
+        self, label: tk.Label, full_text: str, available: int
+    ) -> Optional[str]:
+        """Show as much of a label as fits; return the applied text or None."""
         if available <= 0:
-            return
+            return None
         font = self._label_font(label)
         if font.measure(full_text) <= available:
             text = full_text
@@ -555,8 +663,9 @@ class PluginUI:
         try:
             if str(label.cget("text")) != text:
                 label.configure(text=text)
+            return text
         except tk.TclError:
-            pass
+            return None
 
     def _fit_panel_row(
         self, row: tk.Frame, label: tk.Label, value: tk.Label, full_text: str
@@ -570,7 +679,11 @@ class PluginUI:
             return
         if value_width <= 1:
             value_width = value.winfo_reqwidth()
-        self._fit_panel_text(label, full_text, row_width - value_width - 4)
+        applied = self._fit_panel_text(
+            label, full_text, row_width - value_width - 4
+        )
+        if applied is not None:
+            self._panel_fit[full_text] = applied
 
     def _fit_row_label(
         self, row: tk.Frame, label: tk.Label, full_text: str
@@ -686,12 +799,19 @@ class PluginUI:
                 # Without a timestamp the entry cannot be identified safely.
                 # Compact inner padding; focus ring stays for accessibility.
                 button = tk.Button(row, text="\u270e", width=2, bd=1, pady=0)
+                delete_button = tk.Button(row, text="\u2715", width=2, bd=1, pady=0)
                 button.configure(
-                    command=lambda r=row, l=tons_label, b=button, t=target, ts=timestamp, c=current: self._edit_delivery_tons(
-                        r, (l, b), t.id, ts, c
+                    command=lambda r=row, l=tons_label, b=button, d=delete_button, t=target, ts=timestamp, c=current: self._edit_delivery_tons(
+                        r, (l, b, d), t.id, ts, c
+                    )
+                )
+                delete_button.configure(
+                    command=lambda t=target, ts=timestamp, c=current: self._delete_delivery(
+                        t.id, ts, c
                     )
                 )
                 button.grid(row=0, column=2)
+                delete_button.grid(row=0, column=3, padx=(4, 0))
         if len(entries) >= DELIVERY_LIMIT:
             tk.Label(
                 parent,
@@ -699,6 +819,21 @@ class PluginUI:
                 font="TkSmallCaptionFont",
                 anchor="w",
             ).pack(anchor="w", padx=(24, 0))
+        round_trip = round_trip_text(target.deliveries)
+        if round_trip:
+            summary_row = tk.Frame(parent)
+            summary_row.pack(anchor="w", padx=(24, 0), pady=(3, 0))
+            tk.Label(
+                summary_row, text=round_trip, font="TkSmallCaptionFont", anchor="w"
+            ).pack(side="left")
+            help_icon = _help_icon(summary_row)
+            help_icon.pack(side="left", padx=(4, 0))
+            _Tooltip(
+                help_icon,
+                "Average time between two consecutive landings at this target.\n"
+                "Gaps of more than 3x the median time (minimum 30 minutes) \n"
+                "are treated as breaks and left out.",
+            )
 
     def _edit_delivery_tons(
         self,
@@ -739,12 +874,41 @@ class PluginUI:
         entry.select_range(0, "end")
         _apply_theme(row)
 
+    def _delete_delivery(self, batch_id: str, timestamp: str, tons: int) -> None:
+        """Ask, then drop one logged delivery from its haul."""
+        if not self._confirm(
+            "Delete delivery",
+            "Delete this delivery from the haul?",
+            f"{format_number(tons)} t on {format_timestamp(timestamp)}\n"
+            "The entry is removed and the haul total is reduced by its "
+            "tonnage. This cannot be undone.",
+            "Delete",
+        ):
+            return
+        if self.store.delete_delivery(self.cmdr_key, batch_id, timestamp):
+            self.refresh()
+
     def _refresh_panel(self) -> None:
         if self.panel_rows is None or self.panel_total is None or self.panel_more is None:
             return
 
-        _clear(self.panel_rows)
         targets = self._targets()
+        total = sum(target.tons for target in targets)
+        signature = (
+            tuple(
+                (target.id, target.label, target.tons)
+                for target in targets[:PANEL_ROWS]
+            ),
+            len(targets),
+            total,
+        )
+        if signature == self._panel_sig:
+            # Nothing visible changed; skip the destroy/rebuild cycle that
+            # caused the panel to flicker during delivery bursts.
+            return
+        self._panel_sig = signature
+
+        _clear(self.panel_rows)
         if not targets:
             tk.Label(self.panel_rows, text="No deliveries yet").pack(anchor="w")
             self.panel_more.configure(text="")
@@ -757,8 +921,12 @@ class PluginUI:
             row.pack(fill="x")
             row.columnconfigure(0, weight=1)
             # Fixed, right-aligned tonnage column; the label column grows and
-            # shows the whole name when there is room for it.
-            label = tk.Label(row, text=_short(target.label, 24), anchor="w")
+            # shows the whole name when there is room for it.  Start from the
+            # last fitted text so the request width does not jump per rebuild.
+            full = target.label
+            label = tk.Label(
+                row, text=self._panel_fit.get(full) or _short(full, 24), anchor="w"
+            )
             label.grid(row=0, column=0, sticky="w")
             value = tk.Label(
                 row, text=f"{format_number(target.tons)} t", width=10, anchor="e"
@@ -779,9 +947,7 @@ class PluginUI:
 
         hidden = len(targets) - PANEL_ROWS
         self.panel_more.configure(text=f"+{hidden} more" if hidden > 0 else "")
-        self.panel_total.configure(
-            text=f"Total: {format_number(sum(target.tons for target in targets))} t"
-        )
+        self.panel_total.configure(text=f"Total: {format_number(total)} t")
         _apply_theme(self.panel_rows)
 
     # -- details window --------------------------------------------------
