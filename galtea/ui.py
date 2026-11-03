@@ -321,8 +321,12 @@ class PluginUI:
         self.target_wheel: Any = None
         self.history_wheel: Any = None
         self._history_sig: Optional[tuple] = None
-        # Batches whose delivery log is open: ("t", batch id) / ("h", history id)
+        # Batches whose delivery log is open: ("t", batch id) / ("h", history id).
+        # Session-scoped on purpose; entries for finished batches are harmless.
         self._expanded: set = set()
+        # True while a delivery log editor is open: pauses the live rebuild
+        # of the details rows so a journal event cannot eat the typing.
+        self._log_editing = False
 
         self.report_window: Optional[tk.Toplevel] = None
         self.report_copied = False
@@ -844,6 +848,7 @@ class PluginUI:
         current: int,
     ) -> None:
         """Turn one log line into a numbers-only field until saved/cancelled."""
+        self._log_editing = True
         for widget in hidden:
             widget.grid_forget()
         var = tk.StringVar(master=row, value=str(current))
@@ -860,15 +865,20 @@ class PluginUI:
         )
 
         def save(_event: Optional[tk.Event] = None) -> None:
+            self._log_editing = False
             if var.get().isdigit():
                 self.store.edit_delivery(
                     self.cmdr_key, batch_id, timestamp, int(var.get())
                 )
             self.refresh()
 
+        def cancel(_event: Optional[tk.Event] = None) -> None:
+            self._log_editing = False
+            self.refresh()
+
         entry.bind("<Return>", save)
         entry.bind("<KP_Enter>", save)
-        entry.bind("<Escape>", lambda _event: self.refresh())
+        entry.bind("<Escape>", cancel)
         entry.grid(row=0, column=1, padx=(8, 8), sticky="e")
         entry.focus_set()
         entry.select_range(0, "end")
@@ -1120,6 +1130,9 @@ class PluginUI:
                 pass
 
     def close_details(self) -> None:
+        # A destroyed editor never gets its save/cancel handler, so clear the
+        # guard here or the rows would stay frozen forever.
+        self._log_editing = False
         self._close_report()
         if self.details is not None:
             try:
@@ -1151,6 +1164,10 @@ class PluginUI:
 
     def _refresh_target_rows(self, targets: List[Target]) -> None:
         if self.target_rows is None or self.details_total is None:
+            return
+        if self._log_editing:
+            # Keep the on-screen rows untouched while the user types; the
+            # next refresh after save/cancel renders the new state.
             return
 
         _clear(self.target_rows)

@@ -100,10 +100,10 @@ class HaulStore:
                 # Keep the broken file around for inspection but start clean.
                 self._move_corrupt(self.path)
         if isinstance(raw, dict) and isinstance(raw.get("cmdrs"), dict):
-            # shortcut: no data migrations by design — files from other
-            # schema versions are ignored and replaced (the CHANGELOG tells
-            # users to clear data/ on update).  Upgrade path: add a
-            # converter only if a format with real users must survive.
+            # shortcut: still reject-and-park for foreign versions (the
+            # behaviour released with 0.8.0/0.9.0).  Per AGENTS.md, the
+            # next format change must add a real version converter here so
+            # users no longer have to clear data/ when updating.
             try:
                 supported = int(raw.get("version") or 0) == SCHEMA_VERSION
             except (TypeError, ValueError):
@@ -519,6 +519,11 @@ class HaulStore:
         self.save()
         return True
 
+    def _active_target(self, cmdr_key: str, batch_id: str) -> Optional[Dict[str, Any]]:
+        """The live target dict for a batch id, or None if not active."""
+        target = self._cmdr(cmdr_key)["targets"].get(str(batch_id))
+        return target if isinstance(target, dict) else None
+
     def edit_delivery(
         self, cmdr_key: str, batch_id: str, timestamp: str, tons: int
     ) -> bool:
@@ -531,8 +536,8 @@ class HaulStore:
         tons = int(tons)
         if tons < 0 or not timestamp:
             return False
-        target = self._cmdr(cmdr_key)["targets"].get(str(batch_id))
-        if not isinstance(target, dict):
+        target = self._active_target(cmdr_key, batch_id)
+        if target is None:
             return False
         for delivery in target.get("deliveries") or []:
             if str(delivery.get("timestamp") or "") == timestamp:
@@ -553,8 +558,8 @@ class HaulStore:
         """
         if not timestamp:
             return False
-        target = self._cmdr(cmdr_key)["targets"].get(str(batch_id))
-        if not isinstance(target, dict):
+        target = self._active_target(cmdr_key, batch_id)
+        if target is None:
             return False
         deliveries = target.get("deliveries") or []
         for index, delivery in enumerate(deliveries):

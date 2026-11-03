@@ -5,6 +5,14 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
+## [Unreleased]
+
+### Fixed
+
+- Editing a delivery no longer loses in-progress input: while the numbers
+  field is open, live journal events pause the details-row rebuild and the
+  new state renders right after saving or cancelling.
+
 ## [0.9.0] - 2026-11-02
 
 ### Added
