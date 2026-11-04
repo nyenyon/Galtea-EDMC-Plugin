@@ -1,0 +1,63 @@
+# Galtea Haul Tracker — details
+
+The full guide behind the [README](README.md) overview: the details window
+and its delivery log, the report command, settings, data files, journal
+quirks and development notes.
+
+## The details window
+
+The EDMC main window shows the top three targets and the total, plus a **Details** button:
+
+```
+Galtea Haul Tracker
+  Test Carrier (T3S-TIE)     2,640 t
+  Shakespeare Point          1,300 t
+Total: 3,940 t
+[ Details ]
+```
+
+The details window has **Active hauls (N)** and **Finished hauls (N)** tabs, both showing their entry count.
+
+**Active hauls** is shown first and lists every target with its own **Report** and **Finish haul** buttons. **Finish haul** asks whether the haul was already reported: **Yes** archives it as reported, **No, do it anyway** archives it without the flag, and **Cancel** keeps it active. Unreported tonnage is therefore never archived silently. The header action **Finish all hauls** applies the same choice to every active haul. Clicking a haul row expands it into its delivery log: one entry per landing (several sales during one dock period are combined, stamped with the first sale of that landing), newest first; clicking again collapses it. Each log line has a small **✎** button that turns the tonnage into an editable numbers-only field — Enter saves (the haul's total adjusts by the difference), Escape cancels — and a **✕** button that removes the entry after a confirmation dialog, reducing the haul total by its tonnage. Finished hauls can be expanded the same way, but their log is read-only: they may already have been reported. The last log line shows the average time between consecutive landings; pauses are filtered out (gaps over 3x the median, at least 30 minutes, are ignored), and the line states how many trips were counted. A small circled **?** next to it explains the measurement on hover. Targets tracked before the delivery log existed simply start logging with the next delivery — and if EDMC joined a game that was already docked and missed the `Docked` events, consecutive sales less than two minutes apart at the same target are still merged into one landing.
+
+**Report** opens the prefilled Project Galtea command shown above for that target. `comment:` is the target as shown in the list — the carrier name with its callsign, or the construction site being built — and `user:` comes from the plugin settings. After you post the command, **Reported** archives the haul as reported; if **Copy** was not pressed first, it asks for confirmation. Every report is stored as its own batch with a unique ID, so reporting the same carrier again later creates a separate entry.
+
+**Finished hauls** lists name, type, tonnage, reported flag and finish time, with **Restore** and **Delete** buttons for each entry; **Delete all** clears the whole list. The tab keeps the last 200 entries. Restoring a batch reinserts it as its own entry: if the same carrier already has a newer active batch, both stay separate and new deliveries go to the newest. In that case the details and report windows show the short batch IDs so you can tell the entries apart. All delete actions are permanent and ask for confirmation first.
+
+When an update check finds a newer release, a small link to the GitHub release appears at the bottom of the details window.
+
+## Settings
+
+The plugin adds a **Galtea Haul Tracker** tab to EDMC's settings:
+
+- **Enable Galtea Haul Tracker** – master switch, on by default. While it is off the plugin is inactive: journal events are ignored, the tracker panel shows only a hint, and background update checks stop. **Check now** still works and reports a found update right in the settings. Your saved data stays untouched.
+- **Discord user for the Report command** – the handle used as `user:@name` in the `/addscore` command. The default is the placeholder `@yourdiscordname`, so no real user is credited by accident; set your own handle before reporting. The handle is stored in EDMC's configuration, and the report window reminds you while the placeholder is still in use.
+- **Check GitHub for new versions** – optional and off by default. When enabled, the plugin checks the latest GitHub release in the background on startup and then at most once a day while EDMC is running. **Check now** performs an immediate check, even while automatic checking is off, and shows the result below the button. A found update is also linked at the bottom of the details window. Only release metadata is fetched; no commander or haul data is sent. The plugin never downloads or installs updates automatically.
+- **Game data** – the shown `data/` directory holds all of your commander's game data (haul totals and the carrier name cache); plugin updates do not overwrite it. **Open** reveals the folder in the system file manager. Haul actions like *Finish all hauls* live in the details window, not in the settings.
+- The footer shows the plugin version and links to the GitHub repository.
+
+## Data files
+
+Active haul totals are stored in `data/haul_tracker.json`, the history of finished hauls in `data/haul_history.json`, and carrier display names in `data/carrier_cache.json`. All three live inside the plugin folder and are git-ignored. The files carry a data version, and this plugin has **no migrations**: files from an older plugin version are moved aside to `<name>.corrupt` with a message in the EDMC log and the plugin starts fresh — so **clear the `data/` folder when you update**; old totals and history are not converted. A corrupt file is moved the same way (numbered extras like `<name>.corrupt.1` keep every earlier piece of evidence). Save failures are logged to the EDMC log.
+
+> Note: `data/` is local and git-ignored, so it is not part of the repository or a release archive. Replacing the plugin folder (deleting the old one and copying the new one) removes it; updating with `git pull` or copying files over the existing folder keeps it. Back it up if that matters.
+
+## Good to know
+
+- Carrier names: the journal only knows a carrier's **callsign** (e.g. `T3S-TIE` for fleet carriers, `0822` for squadron carriers) when you dock. The pretty name is read from `SupercruiseDestinationDrop` (also when it contains only the name, a localized variant, or no `MarketID`) and from `CarrierStats`/`CarrierNameChanged` for your own carrier; then the display becomes `Name (CALLSIGN)`. Names are cached per commander, so a carrier you have visited before is shown by name immediately. If the game reports only the callsign on a first visit, the name appears as soon as the journal provides it.
+- Construction sites are shown by their future station name: the "Orbital/Planetary Construction Site:" prefix is stripped, and for the colonisation ship the `$EXT_PANEL_ColonisationShip;` token is replaced by the settlement's port name (e.g. `Volk Reach`).
+- Squadron carriers are sometimes written as `StationType: "FleetCarrier"` in journals. The plugin recognises them by the `squadronBank` station service or by the four-character callsign, so they are labelled **Squadron carrier**.
+- Construction sites are named `Orbital Construction Site: <name>` / `Planetary Construction Site: <name>` in the journal; the display shows only `<name>`, the station that is being built.
+- Startup: EDMC only forwards journal events while the game is running. The plugin remembers the last active commander, so the stored totals are visible immediately after restarting EDMC; the display switches as soon as the journal reports a different commander.
+- Theme: the plugin's own windows use classic Tk widgets and register them with EDMC's `theme` module, so the **default** and **dark** themes (including theme changes while EDMC is running) are respected. The settings tab keeps EDMC's default colours because EDMC does not theme plugin settings tabs.
+- If EDMC is started while you are already docked, the docking event has already been consumed. A sale at a fleet-carrier callsign-shaped station name is still recognised as a carrier (type shown as “Carrier” until a docking event refines it).
+- CQC sessions are ignored.
+
+## Development
+
+```sh
+python3 -m unittest discover -s tests -v
+python3 -m compileall -q load.py galtea tests
+```
+
+The tests use the standard library only.

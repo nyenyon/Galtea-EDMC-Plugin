@@ -13,6 +13,13 @@ Versions match `VERSION` in `load.py`.
   field is open, live journal events pause the details-row rebuild and the
   new state renders right after saving or cancelling.
 
+### Documentation
+
+- The README is now a short overview (jobs, counting rules, install,
+  settings summary, data folder); the full guide — details window,
+  delivery log, report command, settings, data files, journal quirks,
+  development — moved to DETAILS.md, linked from the README.
+
 ## [0.9.0] - 2026-11-02
 
 ### Added

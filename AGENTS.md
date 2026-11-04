@@ -6,7 +6,7 @@
 - Entry point `load.py`; implementation in the `galtea` package; tests in `tests/`.
 - The plugin is built for [Project Galtea](https://projectgaltea.org), an Elite Dangerous colonisation initiative; the Report command feeds the project's Discord score bot.
 - The plugin tracks tonnage sold to fleet/squadron carriers (`MarketSell`) and commodities delivered to construction sites (`ColonisationContribution`). Active totals persist in `data/haul_tracker.json`, the finished-haul history in `data/haul_history.json`, carrier display names in `data/carrier_cache.json` (all git-ignored).
-- `README.md` documents behaviour, install steps and the data files.
+- `README.md` is the short overview (what the plugin does, counting rules, install, settings summary, data folder); `DETAILS.md` is the full guide (details window, delivery log, report command, settings, data files, journal quirks, development) and is linked from the README — update both when behaviour changes.
 - The logo is `assets/logo.svg`, embedded at the top of `README.md`.
 
 ## Platforms
