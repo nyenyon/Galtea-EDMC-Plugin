@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
+from . import LOGGER_NAME
 from .model import (
     KIND_CARRIER,
     KIND_CONSTRUCTION,
@@ -25,7 +26,7 @@ from .model import (
     clean_carrier_name,
 )
 
-logger = logging.getLogger("GalteaHaulTracker")
+logger = logging.getLogger(LOGGER_NAME)
 
 # StationType values seen in real journals.  Construction sites show up as
 # either a depot (space or planetary) or, during the very first build, as a

@@ -65,6 +65,12 @@ def format_number(value: int) -> str:
         return "0"
 
 
+def short_text(text: Any, limit: int) -> str:
+    """Truncate to ``limit`` characters, marking the cut with an ellipsis."""
+    value = str(text or "")
+    return value if len(value) <= limit else value[: limit - 1] + "\u2026"
+
+
 # Construction sites are named "<kind> Construction Site: <future station>"
 # in the journal.  Only the future station name is interesting.
 _CONSTRUCTION_PREFIX = re.compile(

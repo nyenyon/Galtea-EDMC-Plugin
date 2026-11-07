@@ -30,7 +30,9 @@ from .model import (
     normalize_discord_user,
     now_iso,
     round_trip_text,
+    short_text,
 )
+from .overlay import TTL_S, GameOverlay, format_rows
 from .store import DELIVERY_LIMIT, HaulStore
 from .update import ReleaseInfo, UpdateChecker
 
@@ -42,7 +44,12 @@ ENABLED_DEFAULT = "1"
 UPDATE_CHECK_DEFAULT = "0"
 UPDATE_CHECK_DELAY_MS = 2500
 UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
+SETTING_GAME_OVERLAY = "galtea_game_overlay"
+GAME_OVERLAY_DEFAULT = "0"
+# Entries expire after TTL_S, so the heartbeat must stay well below it.
+OVERLAY_HEARTBEAT_MS = TTL_S * 1000 // 2
 GITHUB_URL = "https://github.com/nyenyon/Galtea-EDMC-Plugin"
+EDMCOVERLAY_URL = "https://github.com/SweetJonnySauce/EDMCModernOverlay"
 
 try:  # EDMC 6 exposes the config singleton from the config package
     from config import config as _edmc_config
@@ -106,11 +113,6 @@ def _open_folder(path: Path) -> None:
             subprocess.Popen(["xdg-open", str(path)])
     except Exception:  # noqa: BLE001 - opening a folder must never break the UI
         pass
-
-
-def _short(text: str, limit: int) -> str:
-    text = str(text or "")
-    return text if len(text) <= limit else text[: limit - 1] + "\u2026"
 
 
 def _apply_theme(widget: tk.Misc) -> None:
@@ -347,6 +349,9 @@ class PluginUI:
         self.details_update: Optional[tk.Frame] = None
         self.details_update_label: Optional[tk.Label] = None
         self.checker = UpdateChecker(self.version, self._update_check_enabled)
+        self.game_overlay = GameOverlay()
+        self._overlay_lines: Optional[List[str]] = None
+        self._overlay_heartbeat_id: Optional[str] = None
         self.update_check_after_id: Optional[str] = None
         self._closed = False
 
@@ -382,6 +387,12 @@ class PluginUI:
     def _update_check_enabled(self) -> bool:
         value = str(
             _get_setting(SETTING_UPDATE_CHECK, UPDATE_CHECK_DEFAULT)
+        ).strip().lower()
+        return value in {"1", "true", "yes", "on"}
+
+    def _game_overlay_enabled(self) -> bool:
+        value = str(
+            _get_setting(SETTING_GAME_OVERLAY, GAME_OVERLAY_DEFAULT)
         ).strip().lower()
         return value in {"1", "true", "yes", "on"}
 
@@ -567,6 +578,51 @@ class PluginUI:
         if self.checker.info is not None:
             _open_url(self.checker.info.url)
 
+    # -- in-game overlay -------------------------------------------------
+
+    def _update_overlay(self) -> None:
+        """Push the main-panel summary into the in-game overlay."""
+        if self._closed or self.panel is None or not plugin_enabled():
+            return
+        if not self._game_overlay_enabled():
+            return
+        lines = format_rows(self._targets())
+        self._overlay_lines = lines
+        self.game_overlay.update(lines)
+        self._schedule_overlay_heartbeat()
+
+    def _schedule_overlay_heartbeat(self) -> None:
+        # Legacy overlay entries expire; the heartbeat keeps them alive
+        # while the plugin runs, even without journal events.
+        if self._overlay_heartbeat_id is None and self.panel is not None:
+            try:
+                self._overlay_heartbeat_id = self.panel.after(
+                    OVERLAY_HEARTBEAT_MS, self._overlay_heartbeat
+                )
+            except tk.TclError:
+                pass
+
+    def _overlay_heartbeat(self) -> None:
+        self._overlay_heartbeat_id = None
+        if self._closed or self.panel is None or not plugin_enabled():
+            return
+        if not self._game_overlay_enabled():
+            return
+        if self._overlay_lines:
+            self.game_overlay.update(self._overlay_lines)
+        self._schedule_overlay_heartbeat()
+
+    def _stop_overlay(self, hide: bool) -> None:
+        if self._overlay_heartbeat_id is not None and self.panel is not None:
+            try:
+                self.panel.after_cancel(self._overlay_heartbeat_id)
+            except tk.TclError:
+                pass
+        self._overlay_heartbeat_id = None
+        self._overlay_lines = None
+        if hide:
+            self.game_overlay.hide()
+
     # -- main window panel ----------------------------------------------
 
     def build_panel(self, parent: tk.Misc) -> tk.Frame:
@@ -591,6 +647,7 @@ class PluginUI:
             self.panel_more = None
             self.panel_total = None
             self._cancel_update_check()
+            self._stop_overlay(hide=True)
             tk.Label(
                 frame,
                 text="Galtea Haul Tracker is disabled.",
@@ -632,6 +689,7 @@ class PluginUI:
     def refresh(self) -> None:
         self._refresh_panel()
         self._refresh_details()
+        self._update_overlay()
 
     def _label_font(self, label: tk.Label) -> tkfont.Font:
         """Font used by a panel label, cached per font specification."""
@@ -717,7 +775,7 @@ class PluginUI:
         row.pack(fill="x", pady=1)
         row.columnconfigure(0, weight=1)
         name_label = tk.Label(
-            row, text=marker + _short(target.label, name_limit), anchor="w"
+            row, text=marker + short_text(target.label, name_limit), anchor="w"
         )
         name_label.grid(row=0, column=0, sticky="ew")
         kind_label = tk.Label(row, text=target.kind_label, width=17, anchor="w")
@@ -935,7 +993,7 @@ class PluginUI:
             # last fitted text so the request width does not jump per rebuild.
             full = target.label
             label = tk.Label(
-                row, text=self._panel_fit.get(full) or _short(full, 24), anchor="w"
+                row, text=self._panel_fit.get(full) or short_text(full, 24), anchor="w"
             )
             label.grid(row=0, column=0, sticky="w")
             value = tk.Label(
@@ -1701,8 +1759,48 @@ class PluginUI:
         )
         data_hint.grid(row=14, column=0, sticky="w", pady=(2, 0))
 
+        # -- In-game display ----------------------------------------------
+        group(15, "In-game display")
+        overlay_available = self.game_overlay.is_available()
+        self.game_overlay_var = tk.BooleanVar(
+            master=frame,
+            value=self._game_overlay_enabled() and overlay_available,
+        )
+        nb.Checkbutton(
+            frame,
+            text="Show haul status in-game",
+            variable=self.game_overlay_var,
+            state=tk.NORMAL if overlay_available else tk.DISABLED,
+        ).grid(row=17, column=0, sticky="w")
+        overlay_hint = nb.Label(
+            frame,
+            text=(
+                "Mirrors the panel totals inside the game window. "
+                "Its Overlay Controller decides position and style."
+                if overlay_available
+                else "The EDMCModernOverlay plugin is required and not "
+                "installed. Get it from:"
+            ),
+            justify="left",
+            wraplength=420,
+            font="TkSmallCaptionFont",
+        )
+        overlay_hint.grid(row=18, column=0, sticky="w", pady=(2, 0))
+        overlay_link = None
+        if not overlay_available:
+            overlay_link = nb.Label(
+                frame,
+                text=EDMCOVERLAY_URL,
+                cursor="hand2",
+                font=self._get_link_font(),
+            )
+            overlay_link.grid(row=19, column=0, sticky="w")
+            overlay_link.bind(
+                "<Button-1>", lambda _event: _open_url(EDMCOVERLAY_URL)
+            )
+
         # -- Updates ------------------------------------------------------
-        group(15, "Updates")
+        group(20, "Updates")
         self.update_check_var = tk.BooleanVar(
             master=frame, value=self._update_check_enabled()
         )
@@ -1710,9 +1808,9 @@ class PluginUI:
             frame,
             text="Check GitHub for new versions",
             variable=self.update_check_var,
-        ).grid(row=17, column=0, sticky="w")
+        ).grid(row=22, column=0, sticky="w")
         button_row = nb.Frame(frame)
-        button_row.grid(row=18, column=0, sticky="w", pady=(6, 0))
+        button_row.grid(row=23, column=0, sticky="w", pady=(6, 0))
         self.update_check_button = nb.Button(
             button_row, text="Check now", command=self._manual_update_check
         )
@@ -1733,7 +1831,7 @@ class PluginUI:
             wraplength=420,
             font="TkSmallCaptionFont",
         )
-        update_hint.grid(row=19, column=0, sticky="w", pady=(2, 0))
+        update_hint.grid(row=24, column=0, sticky="w", pady=(2, 0))
         if self.checker.busy and self.checker.manual:
             self._set_update_status("Checking GitHub for a new version\u2026")
         elif self.checker.info is not None and (
@@ -1745,9 +1843,9 @@ class PluginUI:
         # Footer: version and repository link, left aligned and kept at the
         # bottom of the page.  EDMC does not theme the plugin prefs tab, so use
         # nb widgets (their default colours) instead of theme.update().
-        frame.rowconfigure(20, weight=1)
+        frame.rowconfigure(25, weight=1)
         footer = tk.Frame(frame)
-        footer.grid(row=21, column=0, sticky="w", pady=(12, 0))
+        footer.grid(row=26, column=0, sticky="w", pady=(12, 0))
         version_label = nb.Label(footer, text=f"Version {self.version or 'unknown'}")
         version_label.pack(side="left")
         background = version_label.cget("background")
@@ -1766,11 +1864,20 @@ class PluginUI:
         def fit_width(event: tk.Event) -> None:
             """Keep the long labels inside the page when the dialog is resized."""
             width = max(int(event.width) - 4, 200)
-            for label in (enable_hint, hint, data_hint, update_hint, status_label):
+            for label in (
+                enable_hint,
+                hint,
+                data_hint,
+                overlay_hint,
+                update_hint,
+                status_label,
+            ):
                 try:
                     label.configure(wraplength=width)
                 except tk.TclError:
                     pass
+            if overlay_link is not None:
+                overlay_link.configure(wraplength=width)
             try:
                 # shares its line with the Open button
                 data_label.configure(wraplength=max(width - 60, 120))
@@ -1800,6 +1907,21 @@ class PluginUI:
                 SETTING_DISCORD_USER,
                 normalize_discord_user(self.discord_user_var.get()),
             )
+        if self.game_overlay_var is not None and self.game_overlay.is_available():
+            # Unavailable means the checkbox was greyed out, so the stored
+            # setting must stay as it was.
+            was_overlay = self._game_overlay_enabled()
+            _set_setting(
+                SETTING_GAME_OVERLAY, "1" if self.game_overlay_var.get() else "0"
+            )
+            if self._game_overlay_enabled() != was_overlay:
+                if self._game_overlay_enabled():
+                    # Retry from scratch: an earlier failed import must not
+                    # keep the overlay dead for the rest of the session.
+                    self.game_overlay.reset()
+                    self._update_overlay()
+                else:
+                    self._stop_overlay(hide=True)
         if self.update_check_var is None:
             return
 
@@ -1826,4 +1948,5 @@ class PluginUI:
         self._closed = True
         self.checker.closed = True
         self._cancel_update_check()
+        self._stop_overlay(hide=True)
         self.close_details()

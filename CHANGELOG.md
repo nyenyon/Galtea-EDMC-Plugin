@@ -5,6 +5,31 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
+## [1.1.0] - 2026-11-07
+
+### Added
+
+- In-game status overlay: a **Show haul status in-game** setting sends the
+  panel summary (top hauls plus total) to the EDMCModernOverlay plugin for
+  display inside the game window. Requires the separate EDMCModernOverlay
+  plugin (Windows and Linux); position and style are configured in its
+  Overlay Controller, where our entries appear as one "Galtea Haul Tracker"
+  overlay. Without the plugin the setting is greyed out and a hint links to
+  its GitHub page, while the stored setting is left untouched.
+
+### Fixed
+
+- Plugin log messages now reach EDMC's log file: our logger moved under
+  EDMC's own logger tree, so start-up information and warnings are no
+  longer dropped.
+- The overlay group is re-announced on every update until EDMCModernOverlay
+  accepts it, instead of once. A fresh install could otherwise leave the
+  entries visible in game but missing from the Overlay Controller.
+
+### Documentation
+
+- README points to the in-game overlay; DETAILS.md describes it in full.
+
 ## [1.0.0] - 2026-11-03
 
 ### Fixed

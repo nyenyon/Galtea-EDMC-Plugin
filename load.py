@@ -13,13 +13,14 @@ from typing import Any, Dict, Optional
 
 import tkinter as tk
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
+from galtea import LOGGER_NAME
 from galtea.core import Tracker
 from galtea.store import HaulStore
 from galtea.ui import PluginUI, plugin_enabled
 
-logger = logging.getLogger("GalteaHaulTracker")
+logger = logging.getLogger(LOGGER_NAME)
 
 _PLUGIN_DIR = Path(__file__).resolve().parent
 _STORE_FILE = _PLUGIN_DIR / "data" / "haul_tracker.json"

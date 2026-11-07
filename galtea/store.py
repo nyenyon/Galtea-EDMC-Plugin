@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from . import LOGGER_NAME
 from .model import (
     KIND_CARRIER,
     KIND_FLEET,
@@ -30,7 +31,7 @@ from .model import (
     now_iso,
 )
 
-logger = logging.getLogger("GalteaHaulTracker")
+logger = logging.getLogger(LOGGER_NAME)
 
 SCHEMA_VERSION = 5
 HISTORY_SCHEMA_VERSION = 1

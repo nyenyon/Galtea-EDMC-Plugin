@@ -33,8 +33,23 @@ The plugin adds a **Galtea Haul Tracker** tab to EDMC's settings:
 - **Enable Galtea Haul Tracker** – master switch, on by default. While it is off the plugin is inactive: journal events are ignored, the tracker panel shows only a hint, and background update checks stop. **Check now** still works and reports a found update right in the settings. Your saved data stays untouched.
 - **Discord user for the Report command** – the handle used as `user:@name` in the `/addscore` command. The default is the placeholder `@yourdiscordname`, so no real user is credited by accident; set your own handle before reporting. The handle is stored in EDMC's configuration, and the report window reminds you while the placeholder is still in use.
 - **Check GitHub for new versions** – optional and off by default. When enabled, the plugin checks the latest GitHub release in the background on startup and then at most once a day while EDMC is running. **Check now** performs an immediate check, even while automatic checking is off, and shows the result below the button. A found update is also linked at the bottom of the details window. Only release metadata is fetched; no commander or haul data is sent. The plugin never downloads or installs updates automatically.
+- **Show haul status in-game** – optional and off by default. Sends the main-panel summary to [EDMCModernOverlay](https://github.com/SweetJonnySauce/EDMCModernOverlay) for display inside the game window (see "In-game display" below). Without that plugin installed the checkbox is greyed out and a hint links to the plugin's GitHub page.
 - **Game data** – the shown `data/` directory holds all of your commander's game data (haul totals and the carrier name cache); plugin updates do not overwrite it. **Open** reveals the folder in the system file manager. Haul actions like *Finish all hauls* live in the details window, not in the settings.
 - The footer shows the plugin version and links to the GitHub repository.
+
+## In-game display
+
+The haul summary (top three targets plus total — the same numbers as the main-window panel) can be shown **inside the game window**. This uses the separate [EDMCModernOverlay](https://github.com/SweetJonnySauce/EDMCModernOverlay) plugin, which draws text over Elite Dangerous on Windows and Linux and must be installed once (see its wiki for installation). Enable **Show haul status in-game** in the plugin settings. Without EDMCModernOverlay the checkbox is greyed out and the hint below it links to the plugin's GitHub page; the stored setting is left untouched in that case.
+
+Position, anchor point and background of the overlay are configured in EDMCModernOverlay's **Overlay Controller** (grouped as "Galtea Haul Tracker") — not in this plugin's settings. The entries refresh with every tracked delivery and are kept alive by a heartbeat while EDMC runs; turning the setting off (or the master switch) removes them from the game window.
+
+**Overlay grouping and layout:** our payload names are `galtea-haul-name-<n>` and `galtea-haul-tons-<n>` (each plus a `-total` slot) — the `galtea-` prefix marks them as ours, and **everything shares one plugin group, "Galtea Haul Tracker"**, so the controller lists a single overlay. It is announced with `define_plugin_group` the first time the feature is used, without background or border. Names sit at the left edge, the tonnage in a fixed column (x≈215 on the 1280×960 canvas), and overly long names are shortened to 28 characters so they never reach that column. Move the whole group in the controller to place the display where you like.
+
+> A number column whose digits are flush *right* would need a second plugin group, because EDMCModernOverlay justifies whole groups, not columns — we deliberately keep one overlay instead.
+>
+> If you tried an earlier build, delete the leftover groups "Galtea Haul Tracker Names" and "Galtea Haul Tracker Amounts" from `overlay_groupings.user.json`; only the single "Galtea Haul Tracker" group is used now.
+
+Payloads are placed on EDMCModernOverlay's canonical 1280×960 canvas and it scales them to your resolution.
 
 ## Data files
 

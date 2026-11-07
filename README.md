@@ -46,6 +46,8 @@ Construction sites never emit `MarketSell` for deliveries, so exactly one event 
 
 The EDMC main window shows the top three targets and the total, plus a **Details** button. The details window lists **Active hauls** and **Finished hauls**: every target has its own **Report** (the prefilled `/addscore` command) and **Finish haul** action, each haul row expands into a per-landing delivery log that can be corrected, and finished hauls can be restored or permanently deleted. A found update is linked at the bottom of the window.
 
+If enabled, the same totals can be mirrored **inside the game window** via the separate [EDMCModernOverlay](https://github.com/SweetJonnySauce/EDMCModernOverlay) plugin.
+
 The full guide — details window, delivery log with edit/delete and the round-trip average, the report command, all settings, the data files, journal quirks and development notes — lives in [DETAILS.md](DETAILS.md).
 
 ## Install
@@ -60,7 +62,7 @@ The plugin needs no third-party packages. It makes no network requests unless yo
 
 ## Settings
 
-The plugin adds a **Galtea Haul Tracker** tab to EDMC's settings with four entries: the **Enable Galtea Haul Tracker** master switch, the **Discord user** for the report command (set your own handle before reporting — the default is a placeholder), the optional **Check GitHub for new versions** check with **Check now**, and the **Game data** directory with an **Open** button. The footer shows the plugin version and links to this repository.
+The plugin adds a **Galtea Haul Tracker** tab to EDMC's settings with five entries: the **Enable Galtea Haul Tracker** master switch, the **Discord user** for the report command (set your own handle before reporting — the default is a placeholder), the optional **Check GitHub for new versions** check with **Check now**, the **Game data** directory with an **Open** button, and the optional **Show haul status in-game** overlay (needs EDMCModernOverlay). The footer shows the plugin version and links to this repository.
 
 What every setting does in detail: [DETAILS.md](DETAILS.md).
 

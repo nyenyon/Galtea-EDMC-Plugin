@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 
+from galtea import LOGGER_NAME
 from galtea.journal import carrier_name_from_drop
 
 
@@ -48,7 +49,7 @@ class CarrierDropTest(unittest.TestCase):
         self.assertEqual(info["callsign"], "0822")
 
     def test_bare_callsign_is_not_a_name(self) -> None:
-        with self.assertLogs("GalteaHaulTracker", level="DEBUG"):
+        with self.assertLogs(LOGGER_NAME, level="DEBUG"):
             self.assertIsNone(
                 carrier_name_from_drop({"MarketID": 1, "Type": "T3S-TIE"})
             )

@@ -17,7 +17,9 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Tuple
 
-logger = logging.getLogger(__name__)
+from . import LOGGER_NAME
+
+logger = logging.getLogger(LOGGER_NAME)
 
 RELEASES_API_URL = (
     "https://api.github.com/repos/nyenyon/Galtea-EDMC-Plugin/releases/latest"
