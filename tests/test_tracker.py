@@ -321,6 +321,37 @@ class TrackerTest(unittest.TestCase):
         self.assertEqual(target.name, "X9K-WTW")
         self.assertEqual(target.tons, 1320)
 
+    def test_squadron_carrier_sale_after_restart_uses_the_cached_name(self) -> None:
+        # Same startup situation at a squadron carrier: its four-character
+        # name must not be guessed from its shape, but the cache proves it.
+        self.store.remember_carrier("F123", 3709409999, "The Knave", "0822")
+        self.assertTrue(self.feed(sale(700, market_id=3709409999), station="0822"))
+
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.kind, KIND_CARRIER)
+        self.assertEqual(target.display_name, "The Knave")
+        self.assertEqual(target.tons, 700)
+
+    def test_squadron_carrier_sale_after_restart_uses_the_active_target(self) -> None:
+        self.feed(SQUADRON_CARRIER)
+        self.feed(sale(100, market_id=3709409999))
+
+        # Restart: a new tracker, the same store, and no Docked event.
+        tracker = Tracker(self.store)
+        self.assertTrue(
+            tracker.process(
+                sale(200, market_id=3709409999),
+                "Bleae Thua ED-D c12-5",
+                "SQD-001",
+                fid="F123",
+                cmdr="Test",
+            )
+        )
+
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.kind, KIND_SQUADRON)
+        self.assertEqual(target.tons, 300)
+
     def test_unknown_station_without_context_is_ignored(self) -> None:
         self.feed({"event": "Undocked"})  # selects the commander, no delivery
         self.assertFalse(self.feed(sale(1320), station="Abraham Lincoln"))

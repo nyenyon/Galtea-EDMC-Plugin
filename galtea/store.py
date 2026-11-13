@@ -16,7 +16,6 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -29,6 +28,7 @@ from .model import (
     clean_carrier_name,
     is_construction_placeholder,
     now_iso,
+    parse_journal_time,
 )
 
 logger = logging.getLogger(LOGGER_NAME)
@@ -53,13 +53,39 @@ def _as_int(value: Any) -> int:
 
 
 def _parse_ts(value: Any) -> Optional[float]:
-    text = str(value or "")
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    try:
-        return datetime.fromisoformat(text).timestamp()
-    except ValueError:
-        return None
+    moment = parse_journal_time(value)
+    return moment.timestamp() if moment is not None else None
+
+
+def _target_ok(value: Any) -> bool:
+    """True when one stored target has the fields the tracker reads as ints."""
+    if not isinstance(value, dict):
+        return False
+    for key in ("tons", "market_id"):
+        try:
+            int(value.get(key) or 0)
+        except (TypeError, ValueError):
+            return False
+    return True
+
+
+def _records_ok(cmdrs: Dict[str, Any]) -> bool:
+    """True when every commander record has the shape this version writes."""
+    for record in cmdrs.values():
+        if not isinstance(record, dict):
+            return False
+        targets = record.get("targets", {})
+        history = record.get("history", [])
+        if not isinstance(targets, dict) or not isinstance(history, list):
+            return False
+        if not all(_target_ok(target) for target in targets.values()):
+            return False
+        if not all(
+            isinstance(entry, dict) and _target_ok(entry.get("target", {}))
+            for entry in history
+        ):
+            return False
+    return True
 
 
 class HaulStore:
@@ -109,14 +135,14 @@ class HaulStore:
                 supported = int(raw.get("version") or 0) == SCHEMA_VERSION
             except (TypeError, ValueError):
                 supported = False
-            if supported:
+            if supported and _records_ok(raw.get("cmdrs") or {}):
                 self.data = raw
             else:
                 # Move it aside so the first new save cannot destroy it.
                 self._move_corrupt(self.path)
                 logger.warning(
-                    "ignoring %s written by data version %r; clear the data "
-                    "folder when updating the plugin",
+                    "ignoring %s with data version %r: unsupported version or "
+                    "damaged records",
                     self.path,
                     raw.get("version"),
                 )
@@ -146,6 +172,10 @@ class HaulStore:
                 self.history_path,
                 raw.get("version"),
             )
+            return {"cmdrs": {}}
+        if not _records_ok(raw.get("cmdrs") or {}):
+            self._move_corrupt(self.history_path)
+            logger.warning("ignoring %s with damaged records", self.history_path)
             return {"cmdrs": {}}
         return raw
 
@@ -495,10 +525,12 @@ class HaulStore:
                 # At least one side lacks a Docked session: fall back to the
                 # time window since the landing's most recent sale.
                 anchor = last.get("last_sale") or last.get("timestamp")
+                anchor_ts = _parse_ts(anchor)
+                sale_ts = _parse_ts(moment)
                 gap_seconds = (
                     None
-                    if _parse_ts(anchor) is None or _parse_ts(moment) is None
-                    else _parse_ts(moment) - _parse_ts(anchor)
+                    if anchor_ts is None or sale_ts is None
+                    else sale_ts - anchor_ts
                 )
                 merge = gap_seconds is not None and 0 <= gap_seconds <= DELIVERY_MERGE_WINDOW_S
         if merge:
@@ -517,7 +549,10 @@ class HaulStore:
         if system:
             target["system"] = system
 
-        self.save()
+        # A delivery can only change the active file; rewriting the history
+        # file (up to HISTORY_LIMIT entries) on every sale would stall the
+        # Tk thread during a bulk sale.
+        self._write(self.path, self._main_doc())
         return True
 
     def _active_target(self, cmdr_key: str, batch_id: str) -> Optional[Dict[str, Any]]:
@@ -749,8 +784,8 @@ class HaulStore:
         return items
 
     def history(self, cmdr_key: str) -> List[Dict[str, Any]]:
-        record = self._cmdr(cmdr_key)
-        return copy.deepcopy(record["history"])
+        """Finished hauls, newest first.  The entries are shared, not copied."""
+        return list(self._cmdr(cmdr_key)["history"])
 
     def total(self, cmdr_key: str) -> int:
         return sum(target.tons for target in self.targets(cmdr_key))

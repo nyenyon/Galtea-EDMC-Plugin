@@ -16,7 +16,7 @@ import webbrowser
 from pathlib import Path
 from tkinter import font as tkfont
 from tkinter import ttk
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import myNotebook as nb
 from theme import theme
@@ -84,10 +84,15 @@ def _set_setting(key: str, value: str) -> None:
         pass
 
 
+def _flag_setting(key: str, default: str) -> bool:
+    """True when the stored setting holds a truthy value."""
+    value = str(_get_setting(key, default)).strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 def plugin_enabled() -> bool:
     """Master switch: the whole plugin is off when the setting is disabled."""
-    value = str(_get_setting(SETTING_ENABLED, ENABLED_DEFAULT)).strip().lower()
-    return value in {"1", "true", "yes", "on"}
+    return _flag_setting(SETTING_ENABLED, ENABLED_DEFAULT)
 
 
 def _open_url(url: str) -> None:
@@ -322,6 +327,7 @@ class PluginUI:
         self.history_rows: Optional[tk.Frame] = None
         self.target_wheel: Any = None
         self.history_wheel: Any = None
+        self._target_sig: Optional[tuple] = None
         self._history_sig: Optional[tuple] = None
         # Batches whose delivery log is open: ("t", batch id) / ("h", history id).
         # Session-scoped on purpose; entries for finished batches are harmless.
@@ -350,7 +356,7 @@ class PluginUI:
         self.details_update_label: Optional[tk.Label] = None
         self.checker = UpdateChecker(self.version, self._update_check_enabled)
         self.game_overlay = GameOverlay()
-        self._overlay_lines: Optional[List[str]] = None
+        self._overlay_lines: Optional[List[Tuple[str, str]]] = None
         self._overlay_heartbeat_id: Optional[str] = None
         self.update_check_after_id: Optional[str] = None
         self._closed = False
@@ -384,17 +390,23 @@ class PluginUI:
             self.link_font.configure(underline=True)
         return self.link_font
 
+    def _link_label(self, parent: tk.Misc, url: str) -> "nb.Label":
+        """A clickable link label, styled like the other settings links."""
+        label = nb.Label(
+            parent,
+            text=url,
+            cursor="hand2",
+            font=self._get_link_font(),
+            wraplength=420,
+        )
+        label.bind("<Button-1>", lambda _event: _open_url(url))
+        return label
+
     def _update_check_enabled(self) -> bool:
-        value = str(
-            _get_setting(SETTING_UPDATE_CHECK, UPDATE_CHECK_DEFAULT)
-        ).strip().lower()
-        return value in {"1", "true", "yes", "on"}
+        return _flag_setting(SETTING_UPDATE_CHECK, UPDATE_CHECK_DEFAULT)
 
     def _game_overlay_enabled(self) -> bool:
-        value = str(
-            _get_setting(SETTING_GAME_OVERLAY, GAME_OVERLAY_DEFAULT)
-        ).strip().lower()
-        return value in {"1", "true", "yes", "on"}
+        return _flag_setting(SETTING_GAME_OVERLAY, GAME_OVERLAY_DEFAULT)
 
     @staticmethod
     def _update_link_text(info: ReleaseInfo) -> str:
@@ -811,8 +823,10 @@ class PluginUI:
             self._expanded.discard(key)
         else:
             self._expanded.add(key)
-        # force the guarded history view to rebuild with the new marker
-        self._history_sig = None
+        if key[0] == "h":
+            # The history signature tracks only ids, so expansion needs a
+            # reset; the target signature already includes it.
+            self._history_sig = None
         self.refresh()
 
     def _log_delivery_rows(
@@ -924,6 +938,8 @@ class PluginUI:
 
         def save(_event: Optional[tk.Event] = None) -> None:
             self._log_editing = False
+            # Force the row rebuild so the field turns back into a label.
+            self._target_sig = None
             if var.get().isdigit():
                 self.store.edit_delivery(
                     self.cmdr_key, batch_id, timestamp, int(var.get())
@@ -932,6 +948,7 @@ class PluginUI:
 
         def cancel(_event: Optional[tk.Event] = None) -> None:
             self._log_editing = False
+            self._target_sig = None
             self.refresh()
 
         entry.bind("<Return>", save)
@@ -1124,6 +1141,7 @@ class PluginUI:
 
     def _show_details_view(self, view: str) -> None:
         """Switch between the active and finished hauls tabs."""
+        previous = self.details_view
         self.details_view = "history" if view == "history" else "targets"
         if self.targets_view is not None and self.history_view is not None:
             if self.details_view == "targets":
@@ -1132,9 +1150,13 @@ class PluginUI:
             else:
                 self.targets_view.grid_remove()
                 self.history_view.grid()
-        # Rebuild the rows after a tab switch so their labels fit the visible
-        # width and the Reported flags stay current.
-        self._history_sig = None
+        # The hidden tab went stale while it was not visible; rebuild the one
+        # that becomes visible now (a click on the active tab changes nothing).
+        if self.details_view != previous:
+            if self.details_view == "targets":
+                self._target_sig = None
+            else:
+                self._history_sig = None
         self._refresh_details()
 
     def _update_details_tabs(self, targets: int, history: int) -> None:
@@ -1209,29 +1231,55 @@ class PluginUI:
         self.tab_targets_bar = None
         self.tab_history_bar = None
         self._history_sig = None
+        self._target_sig = None
 
     def _refresh_details(self) -> None:
         if self.details is None or not self.details.winfo_exists():
             return
         targets = self._targets()
         history = self._history()
-        self._refresh_target_rows(targets)
-        self._refresh_history_rows(history)
+        if self.details_total is not None:
+            self.details_total.configure(
+                text=f"Total: {format_number(sum(t.tons for t in targets))} t"
+            )
+        # Only the visible tab is built.  The hidden one goes stale and is
+        # rebuilt when it is shown again (see _show_details_view).
+        if self.details_view == "history":
+            self._refresh_history_rows(history)
+        else:
+            self._refresh_target_rows(targets)
         self._update_details_tabs(len(targets), len(history))
         self._refresh_update_hint()
 
     def _refresh_target_rows(self, targets: List[Target]) -> None:
-        if self.target_rows is None or self.details_total is None:
+        if self.target_rows is None:
             return
         if self._log_editing:
             # Keep the on-screen rows untouched while the user types; the
             # next refresh after save/cancel renders the new state.
             return
 
-        _clear(self.target_rows)
-        self.details_total.configure(
-            text=f"Total: {format_number(sum(target.tons for target in targets))} t"
+        signature = (
+            tuple(
+                (
+                    target.id,
+                    target.label,
+                    target.kind_label,
+                    target.tons,
+                    len(target.deliveries),
+                    ("t", target.id) in self._expanded,
+                )
+                for target in targets
+            ),
+            sum(target.tons for target in targets),
         )
+        if signature == self._target_sig:
+            # Nothing visible changed: skip the rebuild that would flicker
+            # through every row during a bulk sale.
+            return
+        self._target_sig = signature
+
+        _clear(self.target_rows)
         if not targets:
             tk.Label(self.target_rows, text="No deliveries tracked yet.").pack(anchor="w", pady=6)
             _bind_wheel(self.target_rows, self.target_wheel)
@@ -1763,8 +1811,7 @@ class PluginUI:
         group(15, "In-game display")
         overlay_available = self.game_overlay.is_available()
         self.game_overlay_var = tk.BooleanVar(
-            master=frame,
-            value=self._game_overlay_enabled() and overlay_available,
+            master=frame, value=self._game_overlay_enabled()
         )
         nb.Checkbutton(
             frame,
@@ -1775,11 +1822,13 @@ class PluginUI:
         overlay_hint = nb.Label(
             frame,
             text=(
-                "Mirrors the panel totals inside the game window. "
-                "Its Overlay Controller decides position and style."
+                "Mirrors the panel totals inside the game window. Requires "
+                "the separate EDMCModernOverlay plugin; its Overlay "
+                "Controller decides position and style."
                 if overlay_available
-                else "The EDMCModernOverlay plugin is required and not "
-                "installed. Get it from:"
+                else "The EDMCModernOverlay plugin is not available in this "
+                "EDMC session. Install or enable it, then restart EDMC. "
+                "Get it from:"
             ),
             justify="left",
             wraplength=420,
@@ -1788,16 +1837,8 @@ class PluginUI:
         overlay_hint.grid(row=18, column=0, sticky="w", pady=(2, 0))
         overlay_link = None
         if not overlay_available:
-            overlay_link = nb.Label(
-                frame,
-                text=EDMCOVERLAY_URL,
-                cursor="hand2",
-                font=self._get_link_font(),
-            )
+            overlay_link = self._link_label(frame, EDMCOVERLAY_URL)
             overlay_link.grid(row=19, column=0, sticky="w")
-            overlay_link.bind(
-                "<Button-1>", lambda _event: _open_url(EDMCOVERLAY_URL)
-            )
 
         # -- Updates ------------------------------------------------------
         group(20, "Updates")
@@ -1851,15 +1892,8 @@ class PluginUI:
         background = version_label.cget("background")
         if background:
             footer.configure(background=background)
-        link = nb.Label(
-            footer,
-            text=GITHUB_URL,
-            cursor="hand2",
-            font=self._get_link_font(),
-            wraplength=420,
-        )
+        link = self._link_label(footer, GITHUB_URL)
         link.pack(side="left", padx=(8, 0))
-        link.bind("<Button-1>", lambda _event: _open_url(GITHUB_URL))
 
         def fit_width(event: tk.Event) -> None:
             """Keep the long labels inside the page when the dialog is resized."""

@@ -279,6 +279,23 @@ class Tracker:
             )
             self.stations[market_id] = context
 
+        if context is None:
+            # Same situation at a squadron carrier: its four-character name
+            # must not be guessed from its shape, but a cached name or an
+            # active carrier target proves the market is a carrier.
+            known = self.store.carrier_name(self.cmdr_key, market_id)
+            kind = self.store.target_kind(self.cmdr_key, market_id)
+            if known or kind in CARRIER_KINDS:
+                context = StationContext(
+                    market_id=market_id,
+                    name=str(station or known.get("callsign") or f"Market {market_id}"),
+                    station_type="",
+                    kind=kind or KIND_CARRIER,
+                    system=str(system or ""),
+                    display_name=str(known.get("name") or ""),
+                )
+                self.stations[market_id] = context
+
         if context is None or context.kind not in CARRIER_KINDS:
             # Regular starports and construction sites must not be counted
             # here; construction sites are handled via ColonisationContribution.

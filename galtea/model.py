@@ -45,9 +45,13 @@ DEFAULT_DISCORD_USER = "@yourdiscordname"
 
 
 def normalize_discord_user(value: Any) -> str:
-    """Return a Discord handle with a leading ``@``; empty stays empty."""
+    """Return a Discord handle with a leading ``@``; empty stays empty.
+
+    A handle with whitespace inside cannot be used in a chat command, so it
+    counts as "not set" and the placeholder is used instead.
+    """
     text = str(value or "").strip()
-    if not text:
+    if not text or any(char.isspace() for char in text):
         return ""
     return text if text.startswith("@") else f"@{text}"
 
@@ -55,6 +59,19 @@ def normalize_discord_user(value: Any) -> str:
 def now_iso() -> str:
     """Current UTC time as an ISO-8601 string, matching journal timestamps."""
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def parse_journal_time(value: Any) -> Optional[datetime]:
+    """A journal ISO-8601 timestamp (usually ``...Z``) as a datetime."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
 
 
 def format_number(value: int) -> str:
@@ -127,14 +144,9 @@ def round_trip_summary(
     """
     moments = []
     for entry in deliveries or []:
-        stamp = str(entry.get("timestamp") or "")
-        if not stamp:
-            continue
-        text = stamp[:-1] + "+00:00" if stamp.endswith("Z") else stamp
-        try:
-            moments.append(datetime.fromisoformat(text))
-        except ValueError:
-            continue
+        moment = parse_journal_time(entry.get("timestamp"))
+        if moment is not None:
+            moments.append(moment)
     try:
         moments.sort()
         gaps = sorted(
@@ -186,12 +198,8 @@ def format_timestamp(value: str) -> str:
     """Turn a journal timestamp into a short local time string for display."""
     if not value:
         return "-"
-    text = str(value).strip()
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    try:
-        moment = datetime.fromisoformat(text)
-    except ValueError:
+    moment = parse_journal_time(value)
+    if moment is None:
         return str(value)
     if moment.tzinfo is None:
         return moment.strftime("%Y-%m-%d %H:%M")

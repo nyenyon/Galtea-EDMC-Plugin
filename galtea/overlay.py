@@ -29,11 +29,13 @@ ROW_COUNT = 3
 LABEL_LIMIT = 28
 TEXT_COLOR = "#ff8c00"
 BASE_X = 20
-# Fixed column for the tonnage inside the same overlay: names are limited to
-# LABEL_LIMIT so they never reach it.  EDMCModernOverlay justifies whole
-# groups, not columns, so this fixed left edge is as close to an aligned
-# number column as one overlay group allows.
-AMOUNT_X = 215
+# Fixed column for the tonnage inside the same overlay.  Names are cut to
+# LABEL_LIMIT characters and the column starts a little further right, so a
+# full-length name still leaves a visible gap before its tonnage.  A name
+# made of very wide letters can still get close, because character count is
+# not width.  EDMCModernOverlay justifies whole groups, not columns, so this
+# fixed left edge is as close to an aligned number column as one group allows.
+AMOUNT_X = 245
 BASE_Y = 100
 LINE_HEIGHT = 26
 # Modern overlay entries expire after this many seconds; the UI heartbeats
@@ -100,24 +102,31 @@ class GameOverlay:
         self._group_registrar = group_registrar or _register_group
         self._client = None
         self._client_failed = False
+        self._probe_failed = False
         self._group_registered = False
+        self._group_warned = False
 
     def _get_client(self):
-        """Import and connect once; remember permanent unavailability."""
-        if self._client_failed:
-            return None
-        if self._client is None:
-            try:
-                client = self._client_factory()
-                client.connect()
-                self._client = client
-            except Exception:
+        """Return a connected client, or None while the plugin is missing.
+
+        The import is retried on every call, so one failed connection does
+        not disable the overlay for the rest of the session.
+        """
+        if self._client is not None:
+            return self._client
+        try:
+            client = self._client_factory()
+            client.connect()
+        except Exception:
+            if not self._client_failed:
                 logger.info(
                     "EDMCModernOverlay not available; the in-game display "
                     "stays off"
                 )
                 self._client_failed = True
-                return None
+            return None
+        self._client = client
+        self._client_failed = False
         return self._client
 
     def _ensure_group(self) -> None:
@@ -133,36 +142,49 @@ class GameOverlay:
             self._group_registrar()
             self._group_registered = True
         except Exception:
-            logger.info(
-                "could not announce the overlay group yet; the entries are "
-                "shown but stay unlisted in the Overlay Controller until it "
-                "succeeds",
-                exc_info=True,
-            )
+            # Retried on every update (the overlay may still be starting),
+            # but the traceback is worth reading only once.
+            if not self._group_warned:
+                logger.info(
+                    "could not announce the overlay group yet; the entries "
+                    "are shown but stay unlisted in the Overlay Controller "
+                    "until it succeeds",
+                    exc_info=True,
+                )
+                self._group_warned = True
 
     def is_available(self) -> bool:
         """True when the EDMCModernOverlay client module is importable.
 
-        Used by the settings page to grey out the switch; does not log and
-        does not remember a failure, so installing the plugin later still
-        works without restarting EDMC.
+        Used by the settings page to grey out the switch.  EDMC adds a
+        plugin's folder to ``sys.path`` when it loads the plugin at
+        start-up, so a plugin installed or enabled later needs a restart.
         """
         if self._client is not None:
             return True
         try:
             return self._client_factory() is not None
         except Exception:
+            if not self._probe_failed:
+                logger.info(
+                    "EDMCModernOverlay cannot be imported in this EDMC "
+                    "session; install or enable it, then restart EDMC",
+                    exc_info=True,
+                )
+                self._probe_failed = True
             return False
 
     def reset(self) -> None:
-        """Forget a failed setup so the next use tries again.
+        """Drop the cached client and the logged warning.
 
         Called when the user switches the setting on: the overlay may have
         been installed or enabled after EDMC started.
         """
         self._client = None
         self._client_failed = False
+        self._probe_failed = False
         self._group_registered = False
+        self._group_warned = False
 
     def update(self, rows: List[Tuple[str, str]]) -> None:
         """Send the summary rows (name plus amount) to the overlay."""
@@ -174,6 +196,7 @@ class GameOverlay:
             return
         try:
             limited = rows[: ROW_COUNT + 1]
+            used = set()
             for index, (name, amount) in enumerate(limited):
                 # The summary line always uses the "-total" slots, no matter
                 # how many rows precede it (the empty state has just one).
@@ -190,6 +213,7 @@ class GameOverlay:
                     ttl=TTL_S,
                     size="normal",
                 )
+                used.add(name_id)
                 if amount:
                     client.send_message(
                         tons_id,
@@ -200,12 +224,22 @@ class GameOverlay:
                         ttl=TTL_S,
                         size="normal",
                     )
+                    used.add(tons_id)
+            # Rows from a longer summary would stay visible until their TTL
+            # runs out, so remove the slots this update did not use.
+            for msgid in NAME_IDS + TONS_IDS:
+                if msgid not in used:
+                    client.send_raw({"id": msgid})
         except Exception:
             logger.warning("could not update the in-game overlay", exc_info=True)
 
     def hide(self) -> None:
-        """Clear our entries in the game window."""
-        client = self._get_client()
+        """Clear our entries in the game window.
+
+        Only a client we already hold can have sent something; asking for
+        one here would import the overlay (and log) at every EDMC exit.
+        """
+        client = self._client
         if client is None:
             return
         try:

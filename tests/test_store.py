@@ -13,6 +13,7 @@ from galtea.store import (
     CACHE_SCHEMA_VERSION,
     CARRIER_LIMIT,
     HISTORY_LIMIT,
+    HISTORY_SCHEMA_VERSION,
     SCHEMA_VERSION,
     HaulStore,
 )
@@ -132,6 +133,19 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["reason"], "reported")
         self.assertEqual(entries[0]["target"]["tons"], 1320)
+
+    def test_a_delivery_does_not_rewrite_the_history_file(self) -> None:
+        self.add_carrier(1320)
+        self.store.reset_target("F123", CARRIER["market_id"], "2026-01-02T08:00:00Z")
+        before = self.history_path.read_text(encoding="utf-8")
+
+        self.add_carrier(100, when="2026-01-03T10:00:00Z")
+
+        # A delivery only touches the active file; the finished haul stays
+        # on disk exactly as it was.
+        self.assertEqual(self.history_path.read_text(encoding="utf-8"), before)
+        self.assertEqual(len(HaulStore(self.path).history("F123")), 1)
+        self.assertEqual(self.store.total("F123"), 100)
 
     def test_restore_moves_history_back_into_the_active_file(self) -> None:
         self.add_carrier(1320)
@@ -553,6 +567,44 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(
             self.path.with_suffix(".corrupt.1").read_text(encoding="utf-8"), "{second"
         )
+
+    def test_wrong_shaped_records_are_moved_aside(self) -> None:
+        for payload in (
+            {
+                "version": SCHEMA_VERSION,
+                "cmdrs": {"F123": {"targets": [], "history": []}},
+            },
+            {"version": SCHEMA_VERSION, "cmdrs": {"F123": {"targets": {"x": "junk"}}}},
+            {
+                "version": SCHEMA_VERSION,
+                "cmdrs": {
+                    "F123": {
+                        "targets": {"x": {"market_id": 1, "tons": "1,320"}},
+                        "history": [],
+                    }
+                },
+            },
+        ):
+            self.path.write_text(json.dumps(payload), encoding="utf-8")
+            store = HaulStore(self.path)
+            self.assertEqual(store.targets("F123"), [])
+            backup = self.path.with_suffix(".corrupt")
+            self.assertTrue(backup.exists())
+            backup.unlink()
+
+    def test_wrong_shaped_history_is_moved_aside(self) -> None:
+        self.history_path.write_text(
+            json.dumps(
+                {
+                    "version": HISTORY_SCHEMA_VERSION,
+                    "cmdrs": {"F123": {"history": [{"target": {"tons": "many"}}]}},
+                }
+            ),
+            encoding="utf-8",
+        )
+        store = HaulStore(self.path)
+        self.assertEqual(store.history("F123"), [])
+        self.assertTrue(self.history_path.with_suffix(".corrupt").exists())
 
     def test_old_plugin_data_version_is_ignored(self) -> None:
         self.path.write_text(

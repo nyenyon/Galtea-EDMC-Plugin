@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 
+from galtea import LOGGER_NAME
 from galtea.model import KIND_FLEET, Target
 from galtea.overlay import (
     AMOUNT_X,
@@ -164,6 +165,18 @@ class GameOverlayTest(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertEqual(len(fake.messages), 24)
 
+    def test_a_failed_group_announcement_is_logged_once(self) -> None:
+        def broken_registrar():
+            raise ImportError("no overlay_plugin module")
+
+        overlay, fake, _ = make(registrar=broken_registrar)
+        with self.assertLogs(LOGGER_NAME, level="INFO") as logs:
+            overlay.update(self.ROWS)
+            overlay.update(self.ROWS)
+        self.assertEqual(len(logs.records), 1)
+        # the rows are still sent, only the group stays unlisted
+        self.assertEqual(len(fake.messages), 16)
+
     def test_reset_forgets_the_registration(self) -> None:
         overlay, _, groups = make()
         overlay.update(self.ROWS)
@@ -200,6 +213,27 @@ class GameOverlayTest(unittest.TestCase):
         overlay, _, _ = make()
         self.assertTrue(overlay.is_available())
 
+    def test_a_failed_probe_is_logged_once(self) -> None:
+        def broken():
+            raise ImportError("no overlay module")
+
+        overlay = GameOverlay(client_factory=broken, group_registrar=lambda: True)
+        with self.assertLogs(LOGGER_NAME, level="INFO") as logs:
+            self.assertFalse(overlay.is_available())
+            self.assertFalse(overlay.is_available())
+        self.assertEqual(len(logs.records), 1)
+
+    def test_hide_without_a_client_does_not_connect(self) -> None:
+        calls = []
+
+        def broken():
+            calls.append(True)
+            raise ImportError("no overlay module")
+
+        overlay = GameOverlay(client_factory=broken, group_registrar=lambda: True)
+        overlay.hide()
+        self.assertEqual(calls, [])
+
     def test_send_failure_is_swallowed(self) -> None:
         overlay, fake, _ = make()
         fake.fail = True
@@ -209,8 +243,26 @@ class GameOverlayTest(unittest.TestCase):
         overlay.update(self.ROWS)
         self.assertEqual(len(fake.messages), 8)
 
+    def test_shorter_summary_clears_the_leftover_rows(self) -> None:
+        overlay, fake, _ = make()
+        overlay.update(self.ROWS)
+        overlay.update(format_rows([]))
+        # every slot the second update did not use is removed, so the old
+        # haul rows do not linger until their TTL runs out
+        self.assertEqual(
+            [msg["id"] for msg in fake.raw],
+            [
+                "galtea-haul-name-1",
+                "galtea-haul-name-2",
+                "galtea-haul-tons-0",
+                "galtea-haul-tons-1",
+                "galtea-haul-tons-2",
+            ],
+        )
+
     def test_hide_clears_every_payload_id(self) -> None:
         overlay, fake, _ = make()
+        overlay.update(self.ROWS)  # connect first; nothing to clear before that
         overlay.hide()
         self.assertEqual(
             [msg["id"] for msg in fake.raw],

@@ -15,6 +15,7 @@ from galtea.model import (
     clean_construction_name,
     format_duration,
     normalize_discord_user,
+    parse_journal_time,
     round_trip_summary,
     round_trip_text,
 )
@@ -101,6 +102,17 @@ class ReportCommandTest(unittest.TestCase):
         self.assertEqual(normalize_discord_user("exampleuser"), "@exampleuser")
         self.assertEqual(normalize_discord_user("@exampleuser"), "@exampleuser")
         self.assertEqual(normalize_discord_user("   "), "")
+        # Discord cannot use a handle with a space; the placeholder takes over.
+        self.assertEqual(normalize_discord_user("Bob Smith"), "")
+        self.assertEqual(normalize_discord_user("  @Bob  "), "@Bob")
+
+    def test_parse_journal_time(self) -> None:
+        self.assertEqual(
+            parse_journal_time("2026-01-01T10:00:00Z"),
+            datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
+        )
+        self.assertIsNone(parse_journal_time(""))
+        self.assertIsNone(parse_journal_time("not a timestamp"))
 
     def test_clean_construction_name_variants(self) -> None:
         # Plain depot names keep working.

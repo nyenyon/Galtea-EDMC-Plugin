@@ -5,6 +5,40 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
+## [1.1.1] - 2026-11-13
+
+### Fixed
+
+- Plugin log messages now really reach EDMC's log file: our logger also gets
+  EDMC's context filter, whose fields EDMC's log format requires. Before,
+  every line failed to format and was dropped.
+- The in-game overlay clears rows that no longer exist, so a finished haul
+  disappears right away instead of lingering for up to two minutes.
+- The overlay setting now explains that a newly installed or enabled
+  EDMCModernOverlay needs an EDMC restart (EDMC only loads a plugin folder
+  at start-up), and a failed availability check is logged with its reason.
+- The settings hint names EDMCModernOverlay again instead of referring to
+  "its Overlay Controller" without saying whose.
+- Selling at a squadron carrier is counted again when EDMC was started while
+  docked there: a cached carrier name or an active haul proves the market.
+- A data file whose records no longer have the expected shape (for example a
+  hand-edited tonnage that is not a number) is moved aside like an unreadable
+  one, instead of breaking the plugin until the file is fixed.
+- A Discord handle containing spaces is ignored, because Discord cannot use
+  it in the report command; the placeholder is used instead.
+- Quitting EDMC no longer tries to load the overlay just to clear entries
+  that were never sent, and a failing overlay group announcement is logged
+  once instead of on every update.
+
+### Changed
+
+- The in-game overlay keeps a small gap between a haul's name and its
+  tonnage.
+- The details window only rebuilds its rows when something visible changed,
+  builds only the tab you are looking at, the finished-haul list is no longer
+  copied on every refresh, and a delivery no longer rewrites the
+  finished-haul file. Long sessions stay responsive.
+
 ## [1.1.0] - 2026-11-07
 
 ### Added
@@ -19,9 +53,8 @@ Versions match `VERSION` in `load.py`.
 
 ### Fixed
 
-- Plugin log messages now reach EDMC's log file: our logger moved under
-  EDMC's own logger tree, so start-up information and warnings are no
-  longer dropped.
+- Plugin log messages are routed through EDMC's logger tree, so they use
+  EDMC's log channel instead of a standalone logger.
 - The overlay group is re-announced on every update until EDMCModernOverlay
   accepts it, instead of once. A fresh install could otherwise leave the
   entries visible in game but missing from the Overlay Controller.
