@@ -38,9 +38,10 @@ class Tracker:
         # Timestamp of the current docking; identifies which logged sales
         # belong to one landing so the delivery log can merge them.
         self.dock_session: str = ""
-        # Names learned from a drop before we know whether the destination is a
-        # carrier.  They are persisted once docking confirms the station kind.
-        self.carrier_names: Dict[str, Dict[str, str]] = {}
+        # Name from the last supercruise drop.  A drop can come without a
+        # market id, and the docking that follows is always that destination,
+        # so it is applied to the next carrier docking even then.
+        self.pending_carrier_name: str = ""
         # Show the last active commander right away: EDMC only sends a
         # synthetic StartUp event when the game is already running.
         self.cmdr_key: str = store.last_commander()
@@ -60,6 +61,7 @@ class Tracker:
         self.store.remember_commander(key, self.cmdr_name)
         self.current = None
         self.dock_session = ""
+        self.pending_carrier_name = ""
         self.stations.clear()
         return True
 
@@ -94,7 +96,9 @@ class Tracker:
         elif event in _STATION_HINTS:
             changed |= self._remember_station(entry, system, set_current=False)
         elif event == "SupercruiseDestinationDrop":
-            changed |= self._note_carrier_name(carrier_name_from_drop(entry))
+            info = carrier_name_from_drop(entry)
+            self.pending_carrier_name = str((info or {}).get("name") or "")
+            changed |= self._note_carrier_name(info)
         elif event in ("CarrierStats", "CarrierNameChanged"):
             changed |= self._note_carrier_name(carrier_name_from_stats(entry))
         elif event == "MarketSell":
@@ -118,11 +122,7 @@ class Tracker:
             known = self.store.carrier_name(
                 self.cmdr_key, context.market_id, context.name
             )
-            if not known:
-                known = self.carrier_names.get(str(context.market_id)) or {}
-                if not known:
-                    known = self.carrier_names.get(context.name.upper()) or {}
-            name = str(known.get("name") or "")
+            name = str(known.get("name") or "") or self.pending_carrier_name
             if name:
                 context.display_name = name
                 self.store.remember_carrier(
@@ -131,11 +131,13 @@ class Tracker:
                     name,
                     str(known.get("callsign") or "") or context.name,
                 )
-
         self.stations[context.market_id] = context
         if set_current:
             self.current = context
             self.dock_session = str(entry.get("timestamp") or "")
+            # A docking hint must not consume the name meant for the Docked
+            # event, which may arrive after a hint without StationType.
+            self.pending_carrier_name = ""
 
         return self.store.update_target(
             self.cmdr_key,
@@ -207,13 +209,8 @@ class Tracker:
             or bool(target_ids)
         )
         if not has_carrier:
-            # Name-only drop at an unknown destination: remember it in memory
-            # until docking tells us whether it is a carrier.
-            if market_id:
-                self.carrier_names[str(int(market_id))] = {
-                    "name": name,
-                    "callsign": "",
-                }
+            # Name-only drop at an unknown destination: `pending_carrier_name`
+            # keeps it until docking tells us whether it is a carrier.
             return False
 
         record = self.store.remember_carrier(self.cmdr_key, market_id, name, callsign)
@@ -267,34 +264,27 @@ class Tracker:
             return False
 
         context = self._context_for(market_id)
-        if context is None and is_callsign(station):
-            # EDMC was started while docked, so we missed the Docked event.
-            # A callsign-shaped station name is a reliable carrier hint.
-            context = StationContext(
-                market_id=market_id,
-                name=str(station),
-                station_type="",
-                kind=KIND_CARRIER,
-                system=str(system or ""),
-            )
-            self.stations[market_id] = context
-
         if context is None:
-            # Same situation at a squadron carrier: its four-character name
-            # must not be guessed from its shape, but a cached name or an
-            # active carrier target proves the market is a carrier.
-            known = self.store.carrier_name(self.cmdr_key, market_id)
+            # EDMC was started while docked (or the Docked event was missed):
+            # a callsign-shaped station name or a known carrier proves the
+            # market is a carrier, and a name cached from a drop is applied.
+            known = self.store.carrier_name(
+                self.cmdr_key, market_id, str(station or "")
+            )
             kind = self.store.target_kind(self.cmdr_key, market_id)
-            if known or kind in CARRIER_KINDS:
+            if is_callsign(station) or known or kind in CARRIER_KINDS:
                 context = StationContext(
                     market_id=market_id,
                     name=str(station or known.get("callsign") or f"Market {market_id}"),
                     station_type="",
                     kind=kind or KIND_CARRIER,
                     system=str(system or ""),
-                    display_name=str(known.get("name") or ""),
+                    display_name=str(known.get("name") or "")
+                    or self.pending_carrier_name,
                 )
                 self.stations[market_id] = context
+        # We are docked here now, so the drop has been used up either way.
+        self.pending_carrier_name = ""
 
         if context is None or context.kind not in CARRIER_KINDS:
             # Regular starports and construction sites must not be counted
@@ -322,6 +312,7 @@ class Tracker:
     def _on_contribution(
         self, entry: Dict[str, Any], system: Optional[str], station: Optional[str]
     ) -> bool:
+        self.pending_carrier_name = ""
         market_id = entry.get("MarketID")
         if market_id is None:
             return False

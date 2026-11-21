@@ -5,6 +5,16 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
+## [1.1.2] - 2026-11-21
+
+### Fixed
+
+- A first visit to a fleet carrier keeps its name: the name from the
+  supercruise drop is remembered for the docking that follows, even when
+  the drop carries no market id, and the sale fallback uses the cached
+  name when the docking event is missed (EDMC started while docked).
+  Before, only the callsign was shown until the next drop at that carrier.
+
 ## [1.1.1] - 2026-11-13
 
 ### Fixed

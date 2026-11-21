@@ -196,6 +196,68 @@ class TrackerTest(unittest.TestCase):
         self.assertEqual(target.display_name, "Test Carrier")
         self.assertEqual(target.label, "Test Carrier (T3S-TIE)")
 
+    def test_name_only_drop_without_market_id_is_used_at_docking(self) -> None:
+        self.feed({"event": "SupercruiseDestinationDrop", "Type": "Test Carrier"})
+        self.feed(FLEET_CARRIER)
+        self.feed(sale(1320))
+
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.display_name, "Test Carrier")
+        self.assertEqual(target.label, "Test Carrier (T3S-TIE)")
+
+    def test_name_only_drop_at_a_starport_is_not_given_to_a_carrier(self) -> None:
+        self.feed({"event": "SupercruiseDestinationDrop", "Type": "Abraham Lincoln"})
+        self.feed(REGULAR_STATION)
+        self.feed({"event": "Undocked", "StationName": "Abraham Lincoln"})
+
+        # No drop before this docking: the starport drop must not be reused.
+        self.feed(FLEET_CARRIER)
+        self.feed(sale(1320))
+
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.display_name, "")
+
+    def test_name_only_drop_reaches_the_sale_and_is_not_reused(self) -> None:
+        self.feed({"event": "SupercruiseDestinationDrop", "Type": "Test Carrier"})
+        # The Docked event was missed, so the sale creates the station context.
+        self.assertTrue(self.feed(sale(1320), station="T3S-TIE"))
+        self.assertEqual(self.store.targets("F123")[0].display_name, "Test Carrier")
+
+        # The name belonged to that landing and must not follow to the next one.
+        self.feed(
+            {
+                "event": "Location",
+                "MarketID": 3709409999,
+                "StationName": "X9K-WTW",
+                "StationType": "FleetCarrier",
+                "StarSystem": "Bleae Thua ED-D c12-5",
+                "timestamp": "2026-01-01T10:05:00Z",
+            }
+        )
+        self.feed(sale(100, market_id=3709409999), station="X9K-WTW")
+
+        names = {t.market_id: t.display_name for t in self.store.targets("F123")}
+        self.assertEqual(names[3709409999], "")
+
+    def test_docking_hint_without_station_type_keeps_the_drop_name(self) -> None:
+        # Some journal versions send DockingGranted without StationType.  That
+        # hint must not consume the name meant for the Docked event.
+        self.feed({"event": "SupercruiseDestinationDrop", "Type": "Test Carrier"})
+        self.feed(
+            {
+                "event": "DockingGranted",
+                "MarketID": 3709409280,
+                "StationName": "T3S-TIE",
+                "timestamp": "2026-01-01T09:59:00Z",
+            }
+        )
+        self.feed(FLEET_CARRIER)
+        self.feed(sale(1320))
+
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.display_name, "Test Carrier")
+        self.assertEqual(target.label, "Test Carrier (T3S-TIE)")
+
     def test_carrier_name_cache_survives_restart(self) -> None:
         self.feed(
             {
@@ -351,6 +413,44 @@ class TrackerTest(unittest.TestCase):
         target = self.store.targets("F123")[0]
         self.assertEqual(target.kind, KIND_SQUADRON)
         self.assertEqual(target.tons, 300)
+
+    def test_callsign_fallback_uses_the_cached_carrier_name(self) -> None:
+        # The drop was seen, the Docked event was not (EDMC started while
+        # docked): the sale must still get the name from the cache.
+        self.feed(
+            {
+                "event": "SupercruiseDestinationDrop",
+                "MarketID": 3709409280,
+                "Type": "Test Carrier T3S-TIE",
+            }
+        )
+        self.assertTrue(self.feed(sale(1320), station="T3S-TIE"))
+
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.display_name, "Test Carrier")
+        self.assertEqual(target.label, "Test Carrier (T3S-TIE)")
+
+    def test_docked_without_market_id_still_uses_the_drop_name(self) -> None:
+        self.feed(
+            {
+                "event": "SupercruiseDestinationDrop",
+                "MarketID": 3709409280,
+                "Type": "Test Carrier T3S-TIE",
+            }
+        )
+        self.feed(
+            {
+                "event": "Docked",
+                "StationName": "T3S-TIE",
+                "StationType": "FleetCarrier",
+                "StarSystem": "Bleae Thua ED-D c12-5",
+                "timestamp": "2026-01-01T10:00:00Z",
+            }
+        )
+        self.assertTrue(self.feed(sale(1320), station="T3S-TIE"))
+
+        target = self.store.targets("F123")[0]
+        self.assertEqual(target.display_name, "Test Carrier")
 
     def test_unknown_station_without_context_is_ignored(self) -> None:
         self.feed({"event": "Undocked"})  # selects the commander, no delivery

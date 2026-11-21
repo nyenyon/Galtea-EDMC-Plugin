@@ -65,7 +65,7 @@ Active haul totals are stored in `data/haul_tracker.json`, the history of finish
 - Construction sites are named `Orbital Construction Site: <name>` / `Planetary Construction Site: <name>` in the journal; the display shows only `<name>`, the station that is being built.
 - Startup: EDMC only forwards journal events while the game is running. The plugin remembers the last active commander, so the stored totals are visible immediately after restarting EDMC; the display switches as soon as the journal reports a different commander.
 - Theme: the plugin's own windows use classic Tk widgets and register them with EDMC's `theme` module, so the **default** and **dark** themes (including theme changes while EDMC is running) are respected. The settings tab keeps EDMC's default colours because EDMC does not theme plugin settings tabs.
-- If EDMC is started while you are already docked, the docking event has already been consumed. A sale at a fleet-carrier callsign-shaped station name is still recognised as a carrier (type shown as “Carrier” until a docking event refines it); at a squadron carrier the same works when the carrier is already cached or has an active haul, because a four-character name alone is not proof.
+- If EDMC is started while you are already docked, the docking event has already been consumed. A sale at a fleet-carrier callsign-shaped station name is still recognised as a carrier (type shown as “Carrier” until a docking event refines it) and the name cached from the drop is used when it is known; at a squadron carrier the same works when the carrier is already cached or has an active haul, because a four-character name alone is not proof.
 - CQC sessions are ignored.
 
 ## Development

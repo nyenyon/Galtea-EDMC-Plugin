@@ -8,3 +8,4 @@ data/
 *.corrupt
 *.corrupt.*
 *.tmp
+.pi/
