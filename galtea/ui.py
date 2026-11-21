@@ -49,6 +49,8 @@ GAME_OVERLAY_DEFAULT = "0"
 # Entries expire after TTL_S, so the heartbeat must stay well below it.
 OVERLAY_HEARTBEAT_MS = TTL_S * 1000 // 2
 GITHUB_URL = "https://github.com/nyenyon/Galtea-EDMC-Plugin"
+COPY_ICON = "⧉"
+COPIED_ICON = "✓"
 EDMCOVERLAY_URL = "https://github.com/SweetJonnySauce/EDMCModernOverlay"
 
 try:  # EDMC 6 exposes the config singleton from the config package
@@ -934,6 +936,9 @@ class PluginUI:
                 row.register(lambda new: new == "" or new.isdigit()),
                 "%P",
             ),
+            # EDMC's theme treats any non-default cursor as a hyperlink:
+            # tk.Entry's own default would paint the tonnage blue.
+            cursor="",
         )
 
         def save(_event: Optional[tk.Event] = None) -> None:
@@ -1395,9 +1400,9 @@ class PluginUI:
     # -- report ----------------------------------------------------------
 
     def _show_report(self, target: Target) -> None:
-        """Show the Discord macro for one target in a copyable field."""
+        """Show the Discord macros for one target in copyable fields."""
         user = self.discord_user()
-        command = target.report_command(user)
+        commands = target.report_commands(user)
         parent = self.details if self.details is not None else self.panel
         self._close_report()
         self.report_copied = False
@@ -1412,7 +1417,8 @@ class PluginUI:
 
         frame = tk.Frame(window, padx=12, pady=12)
         frame.pack(fill="both", expand=True)
-        tk.Label(frame, text=f"Report {target.label}", font="TkHeadingFont").pack(anchor="w")
+        heading = tk.Label(frame, text=f"Report {target.label}", font="TkHeadingFont")
+        heading.pack(anchor="w")
         tk.Label(frame, text=f"{format_number(target.tons)} t delivered").pack(
             anchor="w", pady=(2, 2)
         )
@@ -1421,14 +1427,31 @@ class PluginUI:
             tk.Label(frame, text=f"Batch {target.id[:8]}", font="TkSmallCaptionFont").pack(
                 anchor="w"
             )
-        tk.Label(frame, text="Paste this command into Discord:").pack(
+        tk.Label(frame, text="Paste one of these commands into Discord:").pack(
             anchor="w", pady=(8, 0)
         )
 
-        entry = tk.Entry(frame, width=64)
-        entry.insert(0, command)
-        entry.configure(state="readonly")
-        entry.pack(fill="x", pady=(2, 10))
+        rows = tk.Frame(frame)
+        rows.pack(fill="x", pady=(2, 10))
+        rows.columnconfigure(1, weight=1)
+        entries: List[tk.Entry] = []
+        for index, (label, command) in enumerate(commands):
+            pad = (0 if index == 0 else 2, 0)
+            tk.Label(rows, text=label, width=12, anchor="w").grid(
+                row=index, column=0, sticky="w", pady=pad
+            )
+            entry = tk.Entry(rows, width=48, cursor="")
+            entry.insert(0, command)
+            entry.configure(state="readonly")
+            entry.grid(row=index, column=1, sticky="ew", pady=pad)
+            copy_button = tk.Button(rows, text=COPY_ICON, width=2)
+            copy_button.configure(
+                command=lambda cmd=command, button=copy_button: self._copy_report(
+                    cmd, button
+                )
+            )
+            copy_button.grid(row=index, column=2, sticky="w", padx=(6, 0), pady=pad)
+            entries.append(entry)
 
         if user == DEFAULT_DISCORD_USER:
             tk.Label(
@@ -1436,7 +1459,7 @@ class PluginUI:
                 text=(
                     f"Note: {DEFAULT_DISCORD_USER} is only a placeholder. "
                     "Change the Discord user in EDMC's settings "
-                    "(Galtea Haul Tracker) before using this command."
+                    "(Galtea Haul Tracker) before using these commands."
                 ),
                 justify="left",
                 wraplength=440,
@@ -1444,34 +1467,32 @@ class PluginUI:
 
         buttons = tk.Frame(frame)
         buttons.pack(fill="x")
-        for column in range(3):
+        for column in range(2):
             buttons.columnconfigure(column, weight=1)
-        copy_button = tk.Button(buttons, text="Copy", width=8)
-        copy_button.configure(command=lambda: self._copy_report(command, copy_button))
-        copy_button.grid(row=0, column=0, sticky="w")
         tk.Button(
             buttons,
             text="Reported",
             width=10,
             command=lambda: self._mark_reported(target),
-        ).grid(row=0, column=1)
+        ).grid(row=0, column=0, sticky="w")
         tk.Button(buttons, text="Close", width=8, command=self._close_report).grid(
-            row=0, column=2, sticky="e"
+            row=0, column=1, sticky="e"
         )
 
         _apply_theme(window)
-        try:
-            # Read-only entries use their own background colour, which EDMC's
-            # theme does not update.
-            entry.configure(
-                readonlybackground=str(entry.cget("background")),
-                readonlyforeground=str(entry.cget("foreground")),
-            )
-        except tk.TclError:
-            pass
+        # A read-only entry paints its text and its field with their own
+        # colours, which EDMC's theme does not update.  Give both fields the
+        # window's colours so they match the labels; Tk 9 dropped
+        # -readonlyforeground, so only set the options this Tk has.
+        for entry in entries:
+            for option, value in (
+                ("readonlybackground", str(frame.cget("background"))),
+                ("readonlyforeground", str(heading.cget("foreground"))),
+            ):
+                if option in entry.keys():
+                    entry.configure(**{option: value})
 
-        entry.focus_set()
-        entry.select_range(0, "end")
+        entries[0].focus_set()
 
     def _mark_reported(self, target: Target) -> None:
         """Finish a target after its tonnage has been reported."""
@@ -1481,7 +1502,7 @@ class PluginUI:
             if not self._confirm(
                 "Confirm reported",
                 "Was this delivery really reported?",
-                "The command was not copied. Finishing it removes the haul "
+                "No command was copied. Finishing it removes the haul "
                 "from the active list.",
                 "Yes",
                 parent=self.report_window,
@@ -1500,16 +1521,16 @@ class PluginUI:
             return
         self.report_copied = True
         try:
-            button.configure(text="Copied")
-            button.after(1800, lambda: self._reset_copy_label(button))
+            button.configure(text=COPIED_ICON)
+            button.after(1800, lambda: self._reset_copy_icon(button))
         except tk.TclError:
             pass
 
     @staticmethod
-    def _reset_copy_label(button: tk.Button) -> None:
+    def _reset_copy_icon(button: tk.Button) -> None:
         try:
             if button.winfo_exists():
-                button.configure(text="Copy")
+                button.configure(text=COPY_ICON)
         except tk.TclError:
             pass
 
@@ -1765,8 +1786,8 @@ class PluginUI:
         hint = nb.Label(
             frame,
             text=(
-                f"Used as user:@name in the /addscore command "
-                f"(default: {DEFAULT_DISCORD_USER})."
+                f"Used as user:@name in the /addscore and /sidemission add "
+                f"commands (default: {DEFAULT_DISCORD_USER})."
             ),
             justify="left",
             wraplength=420,

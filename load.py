@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 
 import tkinter as tk
 
-VERSION = "1.1.2"
+VERSION = "1.2.0"
 
 from galtea import LOGGER_NAME
 from galtea.core import Tracker

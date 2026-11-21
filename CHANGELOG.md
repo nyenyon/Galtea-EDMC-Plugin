@@ -5,6 +5,31 @@ All notable changes to the Galtea Haul Tracker plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions match `VERSION` in `load.py`.
 
+## [1.2.0] - 2026-11-21
+
+### Added
+
+- The **Report** window offers the new side-mission command next to the
+  existing one. Both use the same handle, tonnage and target label and
+  differ only in their prefix: `/addscore ...` and
+  `/sidemission add ...`.
+
+### Changed
+
+- Each command has its own **⧉** copy icon at the end of the line. The
+  separate **Copy** button is gone, and the confirmation before
+  **Reported** now asks only whether either command was copied.
+
+### Fixed
+
+- Both command fields in the **Report** window are now readable and use
+  the normal text colour: EDMC's theme paints every widget with a
+  non-default cursor (a plain `tk.Entry` defaults to `xterm`) as a blue
+  hyperlink. The fields now take the theme's text colour, and Tk 9 no
+  longer knows `-readonlyforeground`, so the read-only styling only sets
+  the options that exist. The tonnage field of the delivery log gets the
+  same treatment.
+
 ## [1.1.2] - 2026-11-21
 
 ### Fixed

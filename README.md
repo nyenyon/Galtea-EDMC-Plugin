@@ -20,13 +20,14 @@ An [EDMarketConnector](https://github.com/EDCD/EDMarketConnector) plugin for [Pr
 The plugin has two jobs:
 
 - **Count deliveries automatically.** It follows EDMC's journal while you play. Sales at fleet and squadron carriers and contributions to construction sites are added to the matching target with a running total, so there is no manual adding up of cargo.
-- **Prepare the Discord report.** When you are ready to report, the target's **Report** window contains the finished `/addscore` command with your handle, the current tonnage and the target label:
+- **Prepare the Discord report.** When you are ready to report, the target's **Report** window contains two finished commands with your handle, the current tonnage and the target label — the score report and the side-mission variant, identical apart from their prefix:
 
   ```
   /addscore user:@nyenyon points:2372 comment:[PJGT]PANDA BEAR (B6W-34K)
+  /sidemission add user:@nyenyon points:2372 comment:[PJGT]PANDA BEAR (B6W-34K)
   ```
 
-  **Copy** puts it on the clipboard; paste it into the Galtea Discord. This avoids typos in the handle, tonnage or carrier name and keeps the report consistent with the tracker.
+  The **⧉** icon next to each field puts that command on the clipboard; paste it into the Galtea Discord. This avoids typos in the handle, tonnage or carrier name and keeps the report consistent with the tracker.
 - **Nothing is posted automatically.** The plugin only prepares the command; you decide when and where to send it.
 
 ### What is counted
@@ -44,7 +45,7 @@ Construction sites never emit `MarketSell` for deliveries, so exactly one event 
 
 ## Display
 
-The EDMC main window shows the top three targets and the total, plus a **Details** button. The details window lists **Active hauls** and **Finished hauls**: every target has its own **Report** (the prefilled `/addscore` command) and **Finish haul** action, each haul row expands into a per-landing delivery log that can be corrected, and finished hauls can be restored or permanently deleted. A found update is linked at the bottom of the window.
+The EDMC main window shows the top three targets and the total, plus a **Details** button. The details window lists **Active hauls** and **Finished hauls**: every target has its own **Report** (the prefilled `/addscore` and `/sidemission add` commands) and **Finish haul** action, each haul row expands into a per-landing delivery log that can be corrected, and finished hauls can be restored or permanently deleted. A found update is linked at the bottom of the window.
 
 If enabled, the same totals can be mirrored **inside the game window** via the separate [EDMCModernOverlay](https://github.com/SweetJonnySauce/EDMCModernOverlay) plugin.
 

@@ -29,6 +29,13 @@ KIND_LABELS = {
 # replaces it once a Docked/Location event brings the real name.
 CONSTRUCTION_PLACEHOLDER_PREFIX = "Construction site "
 
+# Discord macros that report a batch: (row label, command prefix).  The
+# rest of the command is identical for both.
+REPORT_VARIANTS = (
+    ("Score", "/addscore"),
+    ("Side mission", "/sidemission add"),
+)
+
 
 def construction_placeholder(market_id: Any) -> str:
     """The fallback name stored for an unseen construction site."""
@@ -240,10 +247,13 @@ class Target:
     def kind_label(self) -> str:
         return KIND_LABELS.get(self.kind, "Unknown")
 
-    def report_command(self, user: Optional[str] = DEFAULT_DISCORD_USER) -> str:
-        """The Discord macro that reports this target's tonnage."""
+    def report_commands(
+        self, user: Optional[str] = DEFAULT_DISCORD_USER
+    ) -> List[Tuple[str, str]]:
+        """The Discord macros that report this target, with their row label."""
         name = normalize_discord_user(user) or DEFAULT_DISCORD_USER
-        return f"/addscore user:{name} points:{int(self.tons)} comment:{self.label}"
+        tail = f"user:{name} points:{int(self.tons)} comment:{self.label}"
+        return [(label, f"{prefix} {tail}") for label, prefix in REPORT_VARIANTS]
 
     def to_dict(self) -> Dict[str, Any]:
         return {

@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 
 from datetime import datetime, timedelta, timezone
+from typing import List, Optional
 
 from galtea.model import (
     DEFAULT_DISCORD_USER,
@@ -34,6 +35,9 @@ def deliveries_from_gaps(gaps_s, tons=1320):
 
 
 class ReportCommandTest(unittest.TestCase):
+    def commands(self, target: Target, user: Optional[str] = DEFAULT_DISCORD_USER) -> List[str]:
+        return [command for _label, command in target.report_commands(user)]
+
     def test_fleet_carrier_command_uses_label_and_plain_tonnage(self) -> None:
         target = Target(
             market_id=3709409280,
@@ -44,8 +48,13 @@ class ReportCommandTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            target.report_command(),
+            self.commands(target)[0],
             f"/addscore user:{DEFAULT_DISCORD_USER} points:2372 "
+            "comment:[PJGT]PANDA BEAR (B6W-34K)",
+        )
+        self.assertEqual(
+            self.commands(target)[1],
+            f"/sidemission add user:{DEFAULT_DISCORD_USER} points:2372 "
             "comment:[PJGT]PANDA BEAR (B6W-34K)",
         )
 
@@ -59,7 +68,7 @@ class ReportCommandTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            target.report_command(),
+            self.commands(target)[0],
             f"/addscore user:{DEFAULT_DISCORD_USER} points:105 "
             "comment:[SCC] The Knave (0822)",
         )
@@ -73,27 +82,38 @@ class ReportCommandTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            target.report_command(),
+            self.commands(target)[0],
             f"/addscore user:{DEFAULT_DISCORD_USER} points:512 comment:Hoshino Enterprise",
         )
 
     def test_user_is_configurable_and_gets_an_at_sign(self) -> None:
         target = Target(market_id=1, name="T3S-TIE", kind=KIND_FLEET, tons=10)
 
-        self.assertIn("user:@someone", target.report_command("someone"))
-        self.assertIn("user:@someone", target.report_command("@someone"))
-        self.assertIn("user:@someone", target.report_command("  @someone  "))
+        for user in ("someone", "@someone", "  @someone  "):
+            for command in self.commands(target, user):
+                self.assertIn("user:@someone", command)
 
     def test_empty_user_falls_back_to_default(self) -> None:
         target = Target(market_id=1, name="T3S-TIE", kind=KIND_FLEET, tons=10)
 
-        self.assertIn(f"user:{DEFAULT_DISCORD_USER}", target.report_command(""))
-        self.assertIn(f"user:{DEFAULT_DISCORD_USER}", target.report_command(None))
+        for user in ("", None):
+            for command in self.commands(target, user):
+                self.assertIn(f"user:{DEFAULT_DISCORD_USER}", command)
 
     def test_large_tonnage_has_no_thousands_separator(self) -> None:
         target = Target(market_id=1, name="T3S-TIE", kind=KIND_FLEET, tons=12345)
 
-        self.assertIn("points:12345", target.report_command())
+        for command in self.commands(target):
+            self.assertIn("points:12345", command)
+
+    def test_both_variants_only_differ_in_their_prefix(self) -> None:
+        target = Target(market_id=1, name="T3S-TIE", kind=KIND_FLEET, tons=10)
+
+        pairs = target.report_commands()
+        self.assertEqual([label for label, _command in pairs], ["Score", "Side mission"])
+        score, side = [command for _label, command in pairs]
+        self.assertTrue(score.startswith("/addscore user:"))
+        self.assertEqual(side, score.replace("/addscore", "/sidemission add", 1))
 
     def test_default_user_is_a_placeholder(self) -> None:
         self.assertEqual(DEFAULT_DISCORD_USER, "@yourdiscordname")
